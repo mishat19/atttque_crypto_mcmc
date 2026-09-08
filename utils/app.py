@@ -536,7 +536,7 @@ function dessinerDigrammes(){
   const entrees = Object.entries(DONNEES.digrammes).sort((a, b) => b[1] - a[1]);
   const total = entrees.reduce((s, e) => s + e[1], 0) || 1;
   $("leg-dig").textContent = "Les 30 plus frequents sur " + entrees.length + " observes.";
-  barres($("dig"), entrees.slice(0, 30), total, d => d.split("").map(symbole).join(""));
+  barres($("dig"), entrees, total, d => d.split("").map(symbole).join(""));
 }
 
 function afficherCorpus(){
