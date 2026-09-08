@@ -134,7 +134,7 @@ def text_generator(matrix, longueur=1000):
 
     return text
 
-content = wiki_text("Soup", "fr", False)
+content = wiki_text("Paris", "fr", False)
 print(content)
 print("\n==================\n")
 display_stats(statistics(content))
@@ -144,3 +144,7 @@ print("\n==================\n")
 display_matrix(markov_matrix(digram_stats(content)))
 print("\n==================\n")
 print(text_generator(markov_matrix(digram_stats(content)), 2000))
+
+"""
+non irréductible, apériodique sur sa classe récurrente, et une seule loi stationnaire, portée par 22 états sur 27.
+"""
