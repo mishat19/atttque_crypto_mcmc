@@ -31,8 +31,18 @@ def wiki_text(titre, lang= "fr", intro_seule = False):
 
     return content
 
-def statistics(titre, lang="fr", intro_seule=False):
-    content = wiki_text(titre, lang, intro_seule)
+def digram_stats(content, largeur=2):
+    content_length = len(content)
+    diagram_stats = {}
+    
+    for index in range(0, content_length, largeur):
+        segment = content[index:index + largeur]
+        diagram_stats[segment] = diagram_stats[segment] + 1 if segment in diagram_stats else 1
+
+    return diagram_stats
+
+
+def statistics(content):
     stats = {
         "global_count": len(content),
         "character_count": {char: content.count(char) for char in SATES},
@@ -52,6 +62,22 @@ def display(stats, largeur=50):
         print(f"{label:>6} {n:6d} {n / total:6.2%}  {barre}")
 
 
-print(wiki_text("Paris", "fr", True))
+def display_digrams(diagrams, top=20000, largeur=50):
+    total = sum(diagrams.values()) or 1
+    counts = sorted(diagrams.items(), key=lambda kv: kv[1], reverse=True)[:top]
+    maxi = counts[0][1] or 1
+
+    print(f"{len(diagrams)} digrammes distincts, {total} au total — top {len(counts)}\n")
+    for segment, n in counts:
+        label = segment.replace(" ", "_")
+        barre = "#" * round(n / maxi * largeur)
+        print(f"{label:>6} {n:6d} {n / total:6.2%}  {barre}")
+
+
+content = wiki_text("Paris", "fr", True)
+
+print(content)
 print("\n==================\n")
-display(statistics("Paris", "fr", True))
+display(statistics(content))
+print("\n==================\n")
+display_digrams(digram_stats(content))
