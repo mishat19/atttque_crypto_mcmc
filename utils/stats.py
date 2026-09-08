@@ -134,7 +134,7 @@ def text_generator(matrix, longueur=1000):
 
     return text
 
-content = wiki_text("Soup", "en", False)
+content = wiki_text("Soup", "fr", False)
 print(content)
 print("\n==================\n")
 display_stats(statistics(content))
