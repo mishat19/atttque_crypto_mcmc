@@ -1,9 +1,9 @@
 """Analyse de digrammes et chaine de Markov d'un texte Wikipedia, avec interface web locale.
 
 Meme logique de calcul que stats.py. L'interface est servie par http.server (stdlib)
-et s'ouvre dans le navigateur : aucune dependance en plus de requests.
+et s'ouvre dans le navigateur : aucune dependance externe (stdlib uniquement).
 
-Lancement :  python stats_web.py
+Lancement :  python utils/app.py
 """
 
 from __future__ import annotations
@@ -11,20 +11,24 @@ from __future__ import annotations
 import http.server
 import json
 import random
+import sys
 import threading
+import urllib.error
 import urllib.parse
+import urllib.request
 import webbrowser
+from pathlib import Path
 
-import requests
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from chiffrements.chiffrement_cesar import chiffre_cesar, dechiffre_cesar
+from substitution.cryptogramme import scores_attaque_frequentielle
 
 WIKI_UA = "MonScript/1.0 (simon@example.com)"
 SATES = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U",
          "V", "W", "X", "Y", "Z", " "]
 
 PORT = 8765
-
-
-# =============== DONNEES (identique a stats.py) ==============
 
 def wiki_text(titre, lang="fr", intro_seule=False):
     params = {
@@ -38,15 +42,12 @@ def wiki_text(titre, lang="fr", intro_seule=False):
     if intro_seule:
         params["exintro"] = 1
 
-    resp = requests.get(
-        f"https://{lang}.wikipedia.org/w/api.php",
-        params=params,
-        headers={"User-Agent": WIKI_UA},
-        timeout=10,
-    )
-    resp.raise_for_status()
+    url = f"https://{lang}.wikipedia.org/w/api.php?" + urllib.parse.urlencode(params)
+    requete = urllib.request.Request(url, headers={"User-Agent": WIKI_UA})
+    with urllib.request.urlopen(requete, timeout=10) as reponse:
+        payload = json.loads(reponse.read().decode("utf-8"))
 
-    page = next(iter(resp.json()["query"]["pages"].values()))
+    page = next(iter(payload["query"]["pages"].values()))
 
     # convert page content to a 27 character string, replacing newlines with spaces and letters in uppercase only
     content = page.get("extract", "").replace("\n", " ").upper()
@@ -114,7 +115,7 @@ def text_generator(matrix, longueur=1000):
 
 # =============== SERVEUR ==============
 
-ETAT: dict = {"matrix": None}
+ETAT: dict = {"matrix": None, "content": None, "cryptogramme": None}
 
 
 def analyser(titre: str, lang: str, intro_seule: bool) -> dict:
@@ -126,6 +127,7 @@ def analyser(titre: str, lang: str, intro_seule: bool) -> dict:
     digrammes = digram_stats(content)
     matrix = markov_matrix(digrammes)
     ETAT["matrix"] = matrix
+    ETAT["content"] = content
 
     return {
         "titre": titre,
@@ -147,6 +149,39 @@ def generer(longueur: int) -> dict:
         return {"texte": text_generator(matrix, longueur)}
     except ValueError:
         return {"erreur": "La chaine a atteint un etat sans transition sortante."}
+
+
+def cryptogrammer(decalage: int, mode: str = "chiffre") -> dict:
+    """Chiffre ou dechiffre le dernier texte avec le chiffrement de Cesar."""
+    cle = decalage % 26
+
+    if mode == "dechiffre":
+        crypto = ETAT["cryptogramme"]
+        if not crypto:
+            return {"erreur": "Generer d'abord un cryptogramme."}
+        return {"texte": dechiffre_cesar(crypto, cle), "decalage": cle}
+
+    content = ETAT["content"]
+    if not content:
+        return {"erreur": "Analysez d'abord un article."}
+    crypto = chiffre_cesar(content, cle)
+    ETAT["cryptogramme"] = crypto
+    return {"cryptogramme": crypto, "decalage": cle}
+
+
+def attaquer() -> dict:
+    """Attaque frequentielle du dernier cryptogramme genere."""
+    crypto = ETAT["cryptogramme"]
+    if not crypto:
+        return {"erreur": "Generer d'abord un cryptogramme."}
+    scores = scores_attaque_frequentielle(crypto)
+    meilleur = max(scores, key=scores.get)
+    classement = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)
+    return {
+        "decalage": meilleur,
+        "scores": [{"decalage": d, "score": round(s, 4)} for d, s in classement],
+        "texte": dechiffre_cesar(crypto, meilleur),
+    }
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -172,6 +207,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._json(self._sur(generer, max(100, min(longueur, 20000))))
             return
 
+        if parsed.path == "/api/cesar":
+            decalage = int(query.get("decalage", ["3"])[0])
+            mode = query.get("mode", ["chiffre"])[0]
+            self._json(self._sur(cryptogrammer, decalage, mode))
+            return
+
+        if parsed.path == "/api/attaque":
+            self._json(self._sur(attaquer))
+            return
+
         self._repondre(404, "text/plain; charset=utf-8", b"Page inconnue")
 
     @staticmethod
@@ -179,10 +224,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         """Convertit toute exception en message affichable par la page."""
         try:
             return fonction(*args)
-        except requests.HTTPError:
+        except urllib.error.HTTPError:
             return {"erreur": "Wikipedia a refuse la requete. Verifiez le titre et la langue."}
-        except requests.RequestException:
-            return {"erreur": "Connexion impossible a Wikipedia."}
+        except (urllib.error.URLError, TimeoutError, ValueError) as erreur:
+            return {"erreur": f"Connexion impossible a Wikipedia : {erreur}"}
         except Exception as erreur:  # noqa: BLE001 - le serveur ne doit jamais tomber
             return {"erreur": str(erreur)}
 
@@ -193,6 +238,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", type_mime)
         self.send_header("Content-Length", str(len(corps)))
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(corps)
 
@@ -280,6 +326,9 @@ h2{font-size:16px;font-weight:600;margin:0 0 3px}
   gap:10px;font-size:12.5px;padding:2px 0}
 .rang .cle{font-family:var(--mono);color:var(--ink)}
 .rang .n,.rang .pc{font-family:var(--mono);text-align:right;font-size:11.5px;color:var(--mute)}
+.rang.att{grid-template-columns:44px 1fr 64px;cursor:pointer}
+.rang.att:hover{background:var(--panel)}
+.rang.att .cle.etoi{color:var(--accent);font-weight:600}
 .piste{height:9px;background:#EAE6DC;border-radius:2px;overflow:hidden}
 .piste i{display:block;height:100%;background:var(--accent);border-radius:2px}
 
@@ -321,6 +370,13 @@ h2{font-size:16px;font-weight:600;margin:0 0 3px}
   </div>
   <label class="case"><input type="checkbox" id="intro"> Introduction seule</label>
   <button id="lancer">Analyser</button>
+  <div class="champ">
+    <label for="cesar">Cle Cesar (0-25)</label>
+    <input type="text" id="cesar" value="3" inputmode="numeric">
+  </div>
+  <button id="crypto">Generer le cryptogramme</button>
+  <button id="dechiffre">Decrypter</button>
+  <button id="attaque-btn">Attaque frequentielle</button>
   <div class="etat" id="etat">Choisissez un article pour construire sa matrice.</div>
 </div>
 
@@ -358,6 +414,9 @@ h2{font-size:16px;font-weight:600;margin:0 0 3px}
   <section class="textes">
     <div class="onglets" role="tablist">
       <button class="bascule" role="tab" aria-selected="true" data-vue="genere">Texte genere</button>
+      <button class="bascule" role="tab" aria-selected="false" data-vue="crypto">Cryptogramme</button>
+      <button class="bascule" role="tab" aria-selected="false" data-vue="dechiffre">Dechiffre</button>
+      <button class="bascule" role="tab" aria-selected="false" data-vue="attaque">Attaque</button>
       <button class="bascule" role="tab" aria-selected="false" data-vue="source">Texte source</button>
       <div class="longueur" id="reglage">
         <label for="longueur">Longueur</label>
@@ -366,6 +425,12 @@ h2{font-size:16px;font-weight:600;margin:0 0 3px}
       </div>
     </div>
     <div class="corpus" id="corpus"></div>
+  </section>
+
+  <section id="sec-attaque" hidden>
+    <h2>Attaque frequentielle</h2>
+    <p class="legende" id="leg-att"></p>
+    <div id="attaque-list"></div>
   </section>
 </main>
 </div>
@@ -401,6 +466,12 @@ async function analyser(){
   if (reponse.erreur) { statut(reponse.erreur, true); return; }
 
   DONNEES = reponse;
+  DONNEES.cryptogramme = null;
+  DONNEES.dechiffre = null;
+  DONNEES.attaque = null;
+  $("sec-attaque").hidden = true;
+  vueActive = "genere";
+  document.querySelectorAll(".bascule").forEach(a => a.setAttribute("aria-selected", a.dataset.vue === "genere"));
   $("vide").hidden = true;
   $("contenu").hidden = false;
   const distincts = Object.keys(reponse.digrammes).length;
@@ -542,9 +613,49 @@ function dessinerDigrammes(){
 }
 
 function afficherCorpus(){
-  $("corpus").textContent = vueActive === "genere" ? DONNEES.genere : DONNEES.content;
+  $("corpus").textContent = vueActive === "genere" ? DONNEES.genere
+    : vueActive === "crypto" ? (DONNEES.cryptogramme || "(Aucun cryptogramme genere.)")
+    : vueActive === "dechiffre" ? (DONNEES.dechiffre || "(Aucun dechiffrement effectue.)")
+    : vueActive === "attaque" ? (DONNEES.attaque ? DONNEES.attaque.texte : "(Aucune attaque effectuee.)")
+    : DONNEES.content;
   $("reglage").style.visibility = vueActive === "genere" ? "visible" : "hidden";
 }
+
+function dessinerAttaque(){
+  const { scores, decalage } = DONNEES.attaque;
+  const maxi = scores[0].score;
+  $("sec-attaque").hidden = false;
+  $("leg-att").textContent = "Cle la plus probable : " + decalage + " \\u2605   |   Notes des 26 decalages (correlation avec les frequences du francais). Les notes se repartissent cycliquement sous un Cesar : ce qui change d'une attaque a l'autre, c'est la position de la ★ et le texte retrouve. Cliquez sur une ligne pour voir le dechiffrement avec cette cle.";
+
+  const rangs = scores.map((s, i) => {
+    const rang = document.createElement("div");
+    rang.className = "rang att";
+    rang.dataset.cle = s.decalage;
+    const best = s.decalage === decalage;
+    rang.innerHTML =
+        '<span class="cle' + (best ? " etoi" : "") + '"> ' + s.decalage + (best ? " \\u2605" : "") + '</span>'
+      + '<span class="piste"><i style="width:' + (s.score / maxi * 100).toFixed(1) + '%"></i></span>'
+      + '<span class="n">' + s.score.toFixed(4) + '</span>';
+    return rang;
+  });
+  const liste = $("attaque-list");
+  liste.innerHTML = "";
+  rangs.forEach(r => liste.appendChild(r));
+}
+
+$("attaque-list").onclick = async (ev) => {
+  const rang = ev.target.closest(".rang.att");
+  if (!rang) return;
+  const cle = parseInt(rang.dataset.cle, 10);
+  statut("Dechiffrement avec la cle candidate " + cle + "\\u2026");
+  const reponse = await fetch("/api/cesar?decalage=" + cle + "&mode=dechiffre&t=" + Date.now()).then(r => r.json());
+  if (reponse.erreur) { statut(reponse.erreur, true); return; }
+  DONNEES.dechiffre = reponse.texte;
+  vueActive = "dechiffre";
+  document.querySelectorAll(".bascule").forEach(a => a.setAttribute("aria-selected", a.dataset.vue === "dechiffre"));
+  afficherCorpus();
+  statut("Dechiffrement affiche avec la cle candidate " + cle + ".");
+};
 
 document.querySelectorAll(".bascule").forEach(b => {
   b.onclick = () => {
@@ -568,6 +679,59 @@ $("regenerer").onclick = async () => {
 
 $("lancer").onclick = analyser;
 $("titre").addEventListener("keydown", e => { if (e.key === "Enter") analyser(); });
+
+$("crypto").onclick = async () => {
+  if (!DONNEES) { statut("Analysez d'abord un article.", true); return; }
+  const saisie = parseInt($("cesar").value, 10);
+  if (isNaN(saisie)) { statut("Entrez une cle Cesar : entier entre 0 et 25.", true); return; }
+  const decalage = ((saisie % 26) + 26) % 26;
+  const note = saisie !== decalage ? " (cle " + saisie + " hors 0-25, utilisee " + decalage + " par modulo 26)" : "";
+  $("crypto").disabled = true;
+  statut("Chiffrement avec la cle " + decalage + "\\u2026");
+  const reponse = await fetch("/api/cesar?decalage=" + decalage + "&t=" + Date.now()).then(r => r.json());
+  $("crypto").disabled = false;
+  if (reponse.erreur) { statut(reponse.erreur, true); return; }
+  DONNEES.cryptogramme = reponse.cryptogramme;
+  vueActive = "crypto";
+  document.querySelectorAll(".bascule").forEach(a => a.setAttribute("aria-selected", a.dataset.vue === "crypto"));
+  afficherCorpus();
+  statut("Cryptogramme genere (cle " + reponse.decalage + ", " + nombre(reponse.cryptogramme.length) + " caracteres)." + note);
+};
+
+$("dechiffre").onclick = async () => {
+  if (!DONNEES) { statut("Analysez d'abord un article.", true); return; }
+  if (!DONNEES.cryptogramme) { statut("Generer d'abord un cryptogramme a dechiffrer.", true); return; }
+  const saisie = parseInt($("cesar").value, 10);
+  if (isNaN(saisie)) { statut("Entrez une cle Cesar : entier entre 0 et 25.", true); return; }
+  const decalage = ((saisie % 26) + 26) % 26;
+  const note = saisie !== decalage ? " (cle " + saisie + " hors 0-25, utilisee " + decalage + " par modulo 26)" : "";
+  $("dechiffre").disabled = true;
+  statut("Dechiffrement avec la cle " + decalage + "\\u2026");
+  const reponse = await fetch("/api/cesar?decalage=" + decalage + "&mode=dechiffre&t=" + Date.now()).then(r => r.json());
+  $("dechiffre").disabled = false;
+  if (reponse.erreur) { statut(reponse.erreur, true); return; }
+  DONNEES.dechiffre = reponse.texte;
+  vueActive = "dechiffre";
+  document.querySelectorAll(".bascule").forEach(a => a.setAttribute("aria-selected", a.dataset.vue === "dechiffre"));
+  afficherCorpus();
+  statut("Dechiffrement effectue avec la cle " + reponse.decalage + "." + note);
+};
+
+$("attaque-btn").onclick = async () => {
+  if (!DONNEES) { statut("Analysez d'abord un article.", true); return; }
+  if (!DONNEES.cryptogramme) { statut("Generer d'abord un cryptogramme a attaquer.", true); return; }
+  $("attaque-btn").disabled = true;
+  statut("Attaque frequentielle en cours\\u2026");
+  const reponse = await fetch("/api/attaque?t=" + Date.now()).then(r => r.json());
+  $("attaque-btn").disabled = false;
+  if (reponse.erreur) { statut(reponse.erreur, true); return; }
+  DONNEES.attaque = reponse;
+  dessinerAttaque();
+  vueActive = "attaque";
+  document.querySelectorAll(".bascule").forEach(a => a.setAttribute("aria-selected", a.dataset.vue === "attaque"));
+  afficherCorpus();
+  statut("Cle la plus probable : " + reponse.decalage + ".");
+};
 </script>
 </body>
 </html>
