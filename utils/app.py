@@ -99,7 +99,7 @@ def markov_matrix(digram_stats):
 
 
 def text_generator(matrix, longueur=1000):
-    text = ""
+    text = " "
     current_char = " "
     for _ in range(longueur):
         x = SATES.index(current_char)
@@ -109,6 +109,8 @@ def text_generator(matrix, longueur=1000):
 
     return text
 
+# Les textes générées n'ont pas de sens particulier puisque toutes les lettres sont mélangées. Les mots ne sont plus de la même taille mais
+# le texte reste cohérent en terme de structure à un texte normal.
 
 # =============== SERVEUR ==============
 
