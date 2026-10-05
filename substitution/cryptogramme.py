@@ -79,14 +79,14 @@ def attaque_frequentielle(cryptogramme):
     }
 
 
-if __name__ == "__main__":
-    message = "UN TEXTE ASSEZ LONG POUR QUE L ATTAQUE FREQUENTIELLE SOIT PRECISE SUR LE TEXTE"
-    cle = 4
-    crypto = chiffre_cryptogramme(message, cle)
-    print("Clair        :", message)
-    print("Cle          :", cle)
-    print("Cryptogramme :", crypto)
-    print("Dechiffre    :", dechiffre_cryptogramme(crypto, cle))
-    resultat = attaque_frequentielle(crypto)
-    print("Cle trouvee  :", resultat["decalage"])
-    print("Texte clair  :", resultat["texte_clair"])
+# if __name__ == "__main__":
+#     message = "UN TEXTE ASSEZ LONG POUR QUE L ATTAQUE FREQUENTIELLE SOIT PRECISE SUR LE TEXTE"
+#     cle = 4
+#     crypto = chiffre_cryptogramme(message, cle)
+#     print("Clair        :", message)
+#     print("Cle          :", cle)
+#     print("Cryptogramme :", crypto)
+#     print("Dechiffre    :", dechiffre_cryptogramme(crypto, cle))
+#     resultat = attaque_frequentielle(crypto)
+#     print("Cle trouvee  :", resultat["decalage"])
+#     print("Texte clair  :", resultat["texte_clair"])

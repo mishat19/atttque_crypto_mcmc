@@ -119,7 +119,7 @@ ETAT: dict = {"matrix": None, "content": None, "cryptogramme": None}
 
 
 def analyser(titre: str, lang: str, intro_seule: bool) -> dict:
-    """Telecharge l'article et renvoie tout ce dont la page a besoin."""
+    """Telecharge l'article et renvoie ce dont la page a besoin."""
     content = wiki_text(titre, lang, intro_seule)
     if not content:
         return {"erreur": "Aucun texte exploitable dans cet article."}
@@ -625,7 +625,7 @@ function dessinerAttaque(){
   const { scores, decalage } = DONNEES.attaque;
   const maxi = scores[0].score;
   $("sec-attaque").hidden = false;
-  $("leg-att").textContent = "Cle la plus probable : " + decalage + " \\u2605   |   Notes des 26 decalages (correlation avec les frequences du francais). Les notes se repartissent cycliquement sous un Cesar : ce qui change d'une attaque a l'autre, c'est la position de la ★ et le texte retrouve. Cliquez sur une ligne pour voir le dechiffrement avec cette cle.";
+  $("leg-att").textContent = "Cle la plus probable : " + decalage + " \\u2605   |   Notes des 26 decalages.";
 
   const rangs = scores.map((s, i) => {
     const rang = document.createElement("div");
