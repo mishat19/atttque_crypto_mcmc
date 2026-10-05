@@ -1,0 +1,7 @@
+- prochiane séance : Document de conception pour la pratie 1.5
+- Fin novembre :
+   - Compte rendu écrot global
+   - code
+   - oral individuel:
+       - 1 élément fonctionnel (original)
+       - utilisation d'une attaque en en condition réellle"
