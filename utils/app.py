@@ -21,7 +21,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from chiffrements.chiffrement_cesar import chiffre_cesar, dechiffre_cesar
+from chiffrements.attaque_frequentielle import attaque_frequentielle_colonnes
+from chiffrements.chiffrement_cesar import ALPHABET, chiffre_cesar, dechiffre_cesar
+from chiffrements.chiffrement_vigenere import chiffre_vigenere, dechiffre_vigenere
+from permutation.cryptogramme import (
+    chiffre_cryptogramme as chiffre_permutation,
+    dechiffre_cryptogramme as dechiffre_permutation,
+    definir_cle as cle_permutation,
+)
 from substitution.cryptogramme import scores_attaque_frequentielle
 
 WIKI_UA = "MonScript/1.0 (simon@example.com)"
@@ -115,7 +122,7 @@ def text_generator(matrix, longueur=1000):
 
 # =============== SERVEUR ==============
 
-ETAT: dict = {"matrix": None, "content": None, "cryptogramme": None}
+ETAT: dict = {"matrix": None, "content": None, "crypto": {}}
 
 
 def analyser(titre: str, lang: str, intro_seule: bool) -> dict:
@@ -128,6 +135,7 @@ def analyser(titre: str, lang: str, intro_seule: bool) -> dict:
     matrix = markov_matrix(digrammes)
     ETAT["matrix"] = matrix
     ETAT["content"] = content
+    ETAT["crypto"] = {}
 
     return {
         "titre": titre,
@@ -151,41 +159,104 @@ def generer(longueur: int) -> dict:
         return {"erreur": "La chaine a atteint un etat sans transition sortante."}
 
 
+def _cle(mot_cle: str) -> str:
+    """Cle de chiffrement : un mot de lettres, espaces retires."""
+    mot = "".join(mot_cle.upper().split())
+    if not mot or not all(c in ALPHABET for c in mot):
+        raise ValueError("La cle doit etre un mot non vide de lettres.")
+    return mot
+
+
+def _source() -> str:
+    """Texte de l'article analyse, source de tous les cryptogrammes."""
+    if not ETAT["content"]:
+        raise ValueError("Analysez d'abord un article.")
+    return ETAT["content"]
+
+
+def _cryptogramme(cible: str) -> str:
+    """Dernier cryptogramme produit pour une cible (cesar, vigenere...)."""
+    crypto = ETAT["crypto"].get(cible)
+    if not crypto:
+        raise ValueError("Generez d'abord un cryptogramme.")
+    return crypto
+
+
 def cryptogrammer(decalage: int, mode: str = "chiffre") -> dict:
     """Chiffre ou dechiffre le dernier texte avec le chiffrement de Cesar."""
     cle = decalage % 26
 
     if mode == "dechiffre":
-        crypto = ETAT["cryptogramme"]
-        if not crypto:
-            return {"erreur": "Generer d'abord un cryptogramme."}
-        return {"texte": dechiffre_cesar(crypto, cle), "decalage": cle}
+        return {"texte": dechiffre_cesar(_cryptogramme("cesar"), cle), "decalage": cle}
 
-    content = ETAT["content"]
-    if not content:
-        return {"erreur": "Analysez d'abord un article."}
-    crypto = chiffre_cesar(content, cle)
-    ETAT["cryptogramme"] = crypto
+    crypto = chiffre_cesar(_source(), cle)
+    ETAT["crypto"]["cesar"] = crypto
     return {"cryptogramme": crypto, "decalage": cle}
+
+
+def crypter_vigenere(mot_cle: str, mode: str = "chiffre") -> dict:
+    """Chiffre ou dechiffre le dernier texte avec une cle de Vigenere connue."""
+    cle = _cle(mot_cle)
+
+    if mode == "dechiffre":
+        return {"texte": dechiffre_vigenere(_cryptogramme("vigenere"), cle), "cle": cle}
+
+    crypto = chiffre_vigenere(_source(), cle)
+    ETAT["crypto"]["vigenere"] = crypto
+    return {"cryptogramme": crypto, "cle": cle}
+
+
+def crypter_permutation(mot_cle: str, mode: str = "chiffre") -> dict:
+    """Chiffre ou dechiffre avec la permutation de position pilotee par la cle."""
+    cle = cle_permutation(_cle(mot_cle))
+
+    if mode == "dechiffre":
+        return {"texte": dechiffre_permutation(_cryptogramme("permutation"), cle), "cle": cle["mot"]}
+
+    crypto = chiffre_permutation(_source(), cle)
+    ETAT["crypto"]["permutation"] = crypto
+    return {"cryptogramme": crypto, "cle": cle["mot"], "permutation": cle["permutation"]}
 
 
 def attaquer() -> dict:
     """Attaque frequentielle du dernier cryptogramme genere."""
-    crypto = ETAT["cryptogramme"]
-    if not crypto:
-        return {"erreur": "Generer d'abord un cryptogramme."}
+    crypto = _cryptogramme("cesar")
     scores = scores_attaque_frequentielle(crypto)
     meilleur = max(scores, key=scores.get)
     classement = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)
     return {
+        "mode": "decalage",
+        "cible": "cesar",
         "decalage": meilleur,
         "scores": [{"decalage": d, "score": round(s, 4)} for d, s in classement],
         "texte": dechiffre_cesar(crypto, meilleur),
     }
 
 
+def _attaquer_colonnes(cible: str, flux: str, periode: int) -> dict:
+    """Attaque frequentielle par colonnes d'un chiffre de periode donnee.
+
+    `flux` dit sur quoi la cle se repete : sur les lettres pour le Vigenere
+    habituel, sur les positions brutes pour la permutation, qui les reordonne.
+    """
+    resultat = attaque_frequentielle_colonnes(_cryptogramme(cible), periode, flux)
+    resultat["mode"] = "colonnes"
+    resultat["cible"] = cible
+    return resultat
+
+
+def attaquer_vigenere(periode: int) -> dict:
+    """Attaque par colonnes du cryptogramme Vigenere."""
+    return _attaquer_colonnes("vigenere", "lettres", periode)
+
+
+def attaquer_permutation(periode: int) -> dict:
+    """Attaque par colonnes du cryptogramme a permutation de position."""
+    return _attaquer_colonnes("permutation", "positions", periode)
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
-    """Sert la page et deux points d'entree JSON."""
+    """Sert la page et les points d'entree JSON (analyse, generation, cifras, attaques)."""
 
     def do_GET(self) -> None:  # noqa: N802 - nom impose par BaseHTTPRequestHandler
         parsed = urllib.parse.urlparse(self.path)
@@ -213,8 +284,30 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._json(self._sur(cryptogrammer, decalage, mode))
             return
 
+        if parsed.path == "/api/vigenere":
+            cle = query.get("cle", [""])[0]
+            mode = query.get("mode", ["chiffre"])[0]
+            self._json(self._sur(crypter_vigenere, cle, mode))
+            return
+
+        if parsed.path == "/api/permutation":
+            cle = query.get("cle", [""])[0]
+            mode = query.get("mode", ["chiffre"])[0]
+            self._json(self._sur(crypter_permutation, cle, mode))
+            return
+
         if parsed.path == "/api/attaque":
             self._json(self._sur(attaquer))
+            return
+
+        if parsed.path == "/api/attaque-vigenere":
+            periode = int(query.get("periode", ["4"])[0])
+            self._json(self._sur(attaquer_vigenere, periode))
+            return
+
+        if parsed.path == "/api/attaque-permutation":
+            periode = int(query.get("periode", ["5"])[0])
+            self._json(self._sur(attaquer_permutation, periode))
             return
 
         self._repondre(404, "text/plain; charset=utf-8", b"Page inconnue")
@@ -226,8 +319,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return fonction(*args)
         except urllib.error.HTTPError:
             return {"erreur": "Wikipedia a refuse la requete. Verifiez le titre et la langue."}
-        except (urllib.error.URLError, TimeoutError, ValueError) as erreur:
+        except urllib.error.URLError as erreur:
             return {"erreur": f"Connexion impossible a Wikipedia : {erreur}"}
+        except TimeoutError:
+            return {"erreur": "Wikipedia a mis trop de temps a repondre."}
+        except ValueError as erreur:
+            return {"erreur": str(erreur)}
         except Exception as erreur:  # noqa: BLE001 - le serveur ne doit jamais tomber
             return {"erreur": str(erreur)}
 
@@ -284,8 +381,23 @@ button:hover{background:#255C41}
 button:disabled{background:var(--mute);cursor:default}
 button.discret{background:transparent;color:var(--accent);border:1px solid var(--rule);padding:6px 13px}
 button.discret:hover{background:var(--panel)}
+button.discret[hidden]{display:none}
+button.plus{margin-top:14px}
 .etat{margin-left:auto;font-size:13.5px;color:var(--mute);padding-bottom:9px}
 .etat.rouge{color:var(--alert)}
+
+/* ---- une carte par cifra ---- */
+.cifras{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-bottom:38px}
+.cifra{border:1px solid var(--rule);border-radius:5px;padding:15px 17px 17px;background:var(--panel)}
+.cifra h3{font-size:13px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;
+  margin:0;color:var(--ink);display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}
+.cifra h3 .algo{font-weight:400;letter-spacing:0;text-transform:none;
+  font-size:12px;color:var(--mute);font-style:italic}
+.cifra .aide{font-size:12px;color:var(--mute);margin:7px 0 13px}
+.cifra .ligne{display:flex;gap:9px;align-items:flex-end;flex-wrap:wrap}
+.cifra .ligne+.ligne{margin-top:11px}
+.cifra .ligne button{flex:1 1 auto;min-width:0;padding:8px 6px;font-size:13px;white-space:nowrap}
+.cifra input[type=text]{width:120px;min-width:0}
 
 /* ---- vide ---- */
 .vide{padding:120px 0;max-width:38ch;color:var(--mute);font-size:17px}
@@ -329,6 +441,7 @@ h2{font-size:16px;font-weight:600;margin:0 0 3px}
 .rang.att{grid-template-columns:44px 1fr 64px;cursor:pointer}
 .rang.att:hover{background:var(--panel)}
 .rang.att .cle.etoi{color:var(--accent);font-weight:600}
+.rang.fige .cle.etoi{color:var(--accent);font-weight:600}
 .piste{height:9px;background:#EAE6DC;border-radius:2px;overflow:hidden}
 .piste i{display:block;height:100%;background:var(--accent);border-radius:2px}
 
@@ -349,7 +462,9 @@ h2{font-size:16px;font-weight:600;margin:0 0 3px}
 }
 @media (max-width:900px){
   .hero,.duo{grid-template-columns:1fr;gap:28px}
+  .cifras{grid-template-columns:1fr}
   .lecture{position:static}
+  .etat{margin-left:0}
 }
 </style>
 </head>
@@ -370,14 +485,66 @@ h2{font-size:16px;font-weight:600;margin:0 0 3px}
   </div>
   <label class="case"><input type="checkbox" id="intro"> Introduction seule</label>
   <button id="lancer">Analyser</button>
-  <div class="champ">
-    <label for="cesar">Cle Cesar (0-25)</label>
-    <input type="text" id="cesar" value="3" inputmode="numeric">
-  </div>
-  <button id="crypto">Generer le cryptogramme</button>
-  <button id="dechiffre">Decrypter</button>
-  <button id="attaque-btn">Attaque frequentielle</button>
-  <div class="etat" id="etat">Choisissez un article pour construire sa matrice.</div>
+</div>
+
+<div class="cifras">
+  <section class="cifra">
+    <h3>Cesar <span class="algo">un decalage fixe pour tout le texte</span></h3>
+    <p class="aide">1 chiffre le texte &middot; 2 dechiffre avec le meme decalage &middot; 3 retrouve le decalage</p>
+    <div class="ligne">
+      <div class="champ">
+        <label for="cesar">Decalage (0-25)</label>
+        <input type="text" id="cesar" value="3" inputmode="numeric">
+      </div>
+    </div>
+    <div class="ligne">
+      <button id="crypto">1 Cryptogramme</button>
+      <button id="dechiffre">2 Decrypter</button>
+      <button id="attaque-btn">3 Attaque</button>
+    </div>
+  </section>
+
+  <section class="cifra">
+    <h3>Vigenere <span class="algo">un decalage par colonne, repete</span></h3>
+    <p class="aide">1 chiffre le texte &middot; 2 dechiffre avec la cle &middot; 3 retrouve la cle, colonne par colonne</p>
+    <div class="ligne">
+      <div class="champ">
+        <label for="cle-vigenere">Cle (mot)</label>
+        <input type="text" id="cle-vigenere" value="ORACLE" autocomplete="off">
+      </div>
+      <div class="champ">
+        <label for="periode-vigenere">Periode L</label>
+        <input type="text" id="periode-vigenere" value="6" inputmode="numeric">
+      </div>
+    </div>
+    <div class="ligne">
+      <button id="crypto-vigenere">1 Cryptogramme</button>
+      <button id="dechiffre-vigenere">2 Decrypter</button>
+      <button id="attaque-btn-vigenere">3 Attaque</button>
+    </div>
+  </section>
+
+  <section class="cifra">
+    <h3>Permutation <span class="algo">Vigenere + positions melangees</span></h3>
+    <p class="aide">1 Melange lettres et positions &middot; 2 remet en ordre avec la cle &middot; 3 retrouve les decalages</p>
+    <div class="ligne">
+      <div class="champ">
+        <label for="cle-permutation">Cle (mot)</label>
+        <input type="text" id="cle-permutation" value="LEMON" autocomplete="off">
+      </div>
+      <div class="champ">
+        <label for="periode-permutation">Periode L</label>
+        <input type="text" id="periode-permutation" value="5" inputmode="numeric">
+      </div>
+    </div>
+    <div class="ligne">
+      <button id="crypto-permutation">1 Cryptogramme</button>
+      <button id="dechiffre-permutation">2 Decrypter</button>
+      <button id="attaque-btn-permutation">3 Attaque</button>
+    </div>
+  </section>
+
+  <div class="etat" id="etat">Choisissez un article, puis Analyzez : les trois cifras se regleront d'un coup.</div>
 </div>
 
 <div class="vide" id="vide">Chaque case indique la probabilite qu'une lettre en suive une autre dans le texte choisi.</div>
@@ -403,11 +570,13 @@ h2{font-size:16px;font-weight:600;margin:0 0 3px}
       <h2>Frequences des caracteres</h2>
       <p class="legende" id="leg-freq"></p>
       <div id="freq"></div>
+      <button class="discret plus" id="freq-plus" hidden>Voir plus</button>
     </section>
     <section>
       <h2>Digrammes les plus frequents</h2>
       <p class="legende" id="leg-dig"></p>
       <div id="dig"></div>
+      <button class="discret plus" id="dig-plus" hidden>Voir plus</button>
     </section>
   </div>
 
@@ -438,7 +607,7 @@ h2{font-size:16px;font-weight:600;margin:0 0 3px}
 <script>
 const RAMPE = ["#F4F1E8","#E4E7DC","#CBD9CB","#ADC8B7","#8AB49F","#659E85","#43876C","#276F55","#14563F"];
 const $ = (id) => document.getElementById(id);
-let DONNEES = null, CASES = [], vueActive = "genere";
+let DONNEES = null, CASES = [], vueActive = "genere", vueCible = "cesar";
 
 RAMPE.forEach(c => { const s = document.createElement("span"); s.style.background = c; $("echelle").appendChild(s); });
 
@@ -452,6 +621,78 @@ function statut(message, rouge){
   e.classList.toggle("rouge", !!rouge);
 }
 
+function afficherVue(quelle){
+  vueActive = quelle;
+  document.querySelectorAll(".bascule").forEach(a => a.setAttribute("aria-selected", a.dataset.vue === quelle));
+  afficherCorpus();
+}
+
+// Boutons en cours d'appel : rafraichirBoutons doit les laisser grilles.
+const EN_COURS = new Set();
+
+async function charger(url, bouton){
+  if (bouton) EN_COURS.add(bouton.id);
+  try {
+    const reponse = await fetch(url);
+    return await reponse.json();
+  } catch (erreur) {
+    return { erreur: "Le serveur ne repond pas." };
+  } finally {
+    if (bouton) EN_COURS.delete(bouton.id);
+    rafraichirBoutons();
+  }
+}
+
+// Chaque cifra a son champ de cle et son bouton "Attaque" : les trois cartes
+// se reglent independamment, dans le meme ordre 1 / 2 / 3.
+const CIFRAS = {
+  vigenere:    { cle: "cle-vigenere",    periode: "periode-vigenere",    url: "/api/vigenere",    nom: "Vigenere" },
+  permutation: { cle: "cle-permutation", periode: "periode-permutation", url: "/api/permutation", nom: "Permutation" },
+};
+
+function suffixe(cible){ return cible === "cesar" ? "" : "-" + cible; }
+
+function rafraichirBoutons(){
+  const pret = !!DONNEES;
+  const actif = (id, pret2) => { $(id).disabled = !pret2 || EN_COURS.has(id); };
+
+  ["cesar", "cle-vigenere", "periode-vigenere", "cle-permutation", "periode-permutation"]
+    .forEach(id => actif(id, pret));
+
+  // 1 : on peut toujours chiffrer le texte analyse.
+  ["crypto", "crypto-vigenere", "crypto-permutation"].forEach(id => actif(id, pret));
+
+  // 2 et 3 : seulement si la cifra a deja produit son cryptogramme.
+  ["cesar", "vigenere", "permutation"].forEach(cible => {
+    const existe = pret && !!DONNEES.crypto[cible];
+    actif("dechiffre" + suffixe(cible), existe);
+    actif("attaque-btn" + suffixe(cible), existe);
+  });
+}
+
+function lireCle(id){
+  const cle = $(id).value.trim().toUpperCase();
+  if (!cle) { statut("Indiquez une cle : un mot de lettres.", true); return null; }
+  if (!/^[A-Z]+$/.test(cle)) { statut("La cle ne doit contenir que des lettres.", true); return null; }
+  return cle;
+}
+
+function lirePeriode(id){
+  const periode = parseInt($(id).value, 10);
+  if (isNaN(periode) || periode < 1) { statut("Periode invalide : entier positif.", true); return null; }
+  return periode;
+}
+
+// La periode vaut la longueur de la cle tant qu'on ne la corrige pas a la main.
+function lierCle(idCle, idPeriode){
+  $(idCle).addEventListener("input", () => {
+    const mot = $(idCle).value.trim().toUpperCase();
+    if (/^[A-Z]+$/.test(mot)) $(idPeriode).value = mot.length;
+  });
+}
+lierCle("cle-vigenere", "periode-vigenere");
+lierCle("cle-permutation", "periode-permutation");
+
 async function analyser(){
   const titre = $("titre").value.trim();
   if (!titre) { statut("Indiquez un titre d'article.", true); return; }
@@ -460,27 +701,26 @@ async function analyser(){
 
   const url = "/api/analyse?titre=" + encodeURIComponent(titre)
     + "&lang=" + $("lang").value + "&intro=" + ($("intro").checked ? "1" : "0");
-  const reponse = await fetch(url).then(r => r.json());
-  $("lancer").disabled = false;
+  const reponse = await charger(url, $("lancer"));
 
   if (reponse.erreur) { statut(reponse.erreur, true); return; }
 
   DONNEES = reponse;
-  DONNEES.cryptogramme = null;
+  DONNEES.crypto = {};
   DONNEES.dechiffre = null;
   DONNEES.attaque = null;
   $("sec-attaque").hidden = true;
-  vueActive = "genere";
-  document.querySelectorAll(".bascule").forEach(a => a.setAttribute("aria-selected", a.dataset.vue === "genere"));
+  vueCible = "cesar";
   $("vide").hidden = true;
   $("contenu").hidden = false;
   const distincts = Object.keys(reponse.digrammes).length;
-  statut(nombre(reponse.stats.global_count) + " caracteres \\u00b7 " + distincts + " digrammes distincts");
+  statut(nombre(reponse.stats.global_count) + " caracteres \\u00b7 " + distincts + " digrammes distincts \\u00b7 cryptogramme dans la carte voulue.");
   dessinerMatrice();
   dessinerFrequences();
   dessinerDigrammes();
-  afficherCorpus();
   resume();
+  afficherVue("genere");
+  rafraichirBoutons();
 }
 
 function dessinerMatrice(){
@@ -589,32 +829,46 @@ function resume(){
     + ligneBilan("Jamais atteints", jamais.length ? jamais.map(nom).join(", ") : "aucun");
 }
 
-function barres(cible, entrees, total, formateur){
-  const maxi = entrees[0] ? entrees[0][1] : 1;
-  cible.innerHTML = entrees.map(([cle, n]) =>
-    '<div class="rang"><span class="cle">' + formateur(cle) + '</span>'
+// Listes longues : on montre les 5 premiers et on laisse le reste derriere un
+// "Voir plus" / "Voir moins", sinon les 26 lettres ou les centaines de
+// digrammes ecrasent le reste de la page.
+const PLIAGE = { freq: false, dig: false };
+
+function barres(cible, entrees, total, formateur, cle, limite = 5){
+  const visibles = PLIAGE[cle] ? entrees : entrees.slice(0, limite);
+  const maxi = visibles[0] ? visibles[0][1] : 1;
+  cible.innerHTML = visibles.map(([cle2, n]) =>
+    '<div class="rang"><span class="cle">' + formateur(cle2) + '</span>'
     + '<span class="piste"><i style="width:' + (n / maxi * 100).toFixed(1) + '%"></i></span>'
     + '<span class="n">' + nombre(n) + '</span>'
     + '<span class="pc">' + (n / total * 100).toFixed(2) + '%</span></div>').join("");
+
+  const reste = entrees.length - limite;
+  const bouton = $(cle + "-plus");
+  bouton.hidden = reste <= 0;
+  bouton.textContent = PLIAGE[cle] ? "Voir moins" : "Voir plus (" + nombre(reste) + ")";
 }
 
 function dessinerFrequences(){
   const { stats } = DONNEES;
   const entrees = Object.entries(stats.character_count).sort((a, b) => b[1] - a[1]);
   $("leg-freq").textContent = nombre(stats.global_count) + " caracteres retenus, accents supprimes.";
-  barres($("freq"), entrees, stats.global_count || 1, nom);
+  barres($("freq"), entrees, stats.global_count || 1, nom, "freq");
 }
 
 function dessinerDigrammes(){
   const entrees = Object.entries(DONNEES.digrammes).sort((a, b) => b[1] - a[1]);
   const total = entrees.reduce((s, e) => s + e[1], 0) || 1;
-  $("leg-dig").textContent = "Les 30 plus frequents sur " + entrees.length + " observes.";
-  barres($("dig"), entrees, total, d => d.split("").map(symbole).join(""));
+  $("leg-dig").textContent = "Les 5 plus frequents sur " + entrees.length + " observes.";
+  barres($("dig"), entrees, total, d => d.split("").map(symbole).join(""), "dig");
 }
+
+$("freq-plus").onclick = () => { PLIAGE.freq = !PLIAGE.freq; dessinerFrequences(); };
+$("dig-plus").onclick = () => { PLIAGE.dig = !PLIAGE.dig; dessinerDigrammes(); };
 
 function afficherCorpus(){
   $("corpus").textContent = vueActive === "genere" ? DONNEES.genere
-    : vueActive === "crypto" ? (DONNEES.cryptogramme || "(Aucun cryptogramme genere.)")
+    : vueActive === "crypto" ? (DONNEES.crypto[vueCible] || "(Aucun cryptogramme genere.)")
     : vueActive === "dechiffre" ? (DONNEES.dechiffre || "(Aucun dechiffrement effectue.)")
     : vueActive === "attaque" ? (DONNEES.attaque ? DONNEES.attaque.texte : "(Aucune attaque effectuee.)")
     : DONNEES.content;
@@ -622,116 +876,177 @@ function afficherCorpus(){
 }
 
 function dessinerAttaque(){
-  const { scores, decalage } = DONNEES.attaque;
-  const maxi = scores[0].score;
+  const attaque = DONNEES.attaque;
+  const liste = $("attaque-list");
+  liste.innerHTML = "";
   $("sec-attaque").hidden = false;
-  $("leg-att").textContent = "Cle la plus probable : " + decalage + " \\u2605   |   Notes des 26 decalages.";
 
-  const rangs = scores.map((s, i) => {
+  if (attaque.mode === "colonnes") {
+    const suite = attaque.positions_melangees
+      ? " Lettres dechiffrees, mais remises a la place de leur colonne destination : la permutation reste a retrouver."
+      : "";
+    $("leg-att").textContent = "Periode " + attaque.periode + " \\u00b7 decalages "
+      + attaque.cle_lue.split("").join(" / ") + " \\u00b7 ecart mini " + attaque.fiabilite
+      + " (fiabilite)" + suite;
+    const maxi = Math.max.apply(null, attaque.colonnes.map(c => c.score));
+    attaque.colonnes.forEach(colonne => {
+      const rang = document.createElement("div");
+      rang.className = "rang fige";
+      rang.innerHTML = '<span class="cle etoi"> ' + colonne.colonne + '</span>'
+        + '<span class="piste"><i style="width:' + (colonne.score / maxi * 100).toFixed(1) + '%"></i></span>'
+        + '<span class="n">+' + colonne.decalage + '</span>'
+        + '<span class="pc">' + nombre(colonne.lettres) + '</span>';
+      liste.appendChild(rang);
+    });
+    return;
+  }
+
+  const maxi = attaque.scores[0].score;
+  $("leg-att").textContent = "Cle la plus probable : " + attaque.decalage + " \\u2605   |   Notes des 26 decalages.";
+
+  attaque.scores.forEach(s => {
     const rang = document.createElement("div");
     rang.className = "rang att";
     rang.dataset.cle = s.decalage;
-    const best = s.decalage === decalage;
+    const best = s.decalage === attaque.decalage;
     rang.innerHTML =
         '<span class="cle' + (best ? " etoi" : "") + '"> ' + s.decalage + (best ? " \\u2605" : "") + '</span>'
       + '<span class="piste"><i style="width:' + (s.score / maxi * 100).toFixed(1) + '%"></i></span>'
       + '<span class="n">' + s.score.toFixed(4) + '</span>';
-    return rang;
+    liste.appendChild(rang);
   });
-  const liste = $("attaque-list");
-  liste.innerHTML = "";
-  rangs.forEach(r => liste.appendChild(r));
 }
 
 $("attaque-list").onclick = async (ev) => {
   const rang = ev.target.closest(".rang.att");
-  if (!rang) return;
+  if (!rang || !rang.dataset.cle) return;
   const cle = parseInt(rang.dataset.cle, 10);
   statut("Dechiffrement avec la cle candidate " + cle + "\\u2026");
-  const reponse = await fetch("/api/cesar?decalage=" + cle + "&mode=dechiffre&t=" + Date.now()).then(r => r.json());
+  const reponse = await charger("/api/cesar?decalage=" + cle + "&mode=dechiffre&t=" + Date.now());
   if (reponse.erreur) { statut(reponse.erreur, true); return; }
   DONNEES.dechiffre = reponse.texte;
-  vueActive = "dechiffre";
-  document.querySelectorAll(".bascule").forEach(a => a.setAttribute("aria-selected", a.dataset.vue === "dechiffre"));
-  afficherCorpus();
+  afficherVue("dechiffre");
   statut("Dechiffrement affiche avec la cle candidate " + cle + ".");
 };
 
 document.querySelectorAll(".bascule").forEach(b => {
-  b.onclick = () => {
-    document.querySelectorAll(".bascule").forEach(a => a.setAttribute("aria-selected", a === b));
-    vueActive = b.dataset.vue;
-    afficherCorpus();
-  };
+  b.onclick = () => afficherVue(b.dataset.vue);
 });
 
 $("regenerer").onclick = async () => {
   const longueur = parseInt($("longueur").value, 10) || 2000;
   $("regenerer").disabled = true;
-  const reponse = await fetch("/api/generer?longueur=" + longueur).then(r => r.json());
+  const reponse = await charger("/api/generer?longueur=" + longueur);
   $("regenerer").disabled = false;
   if (reponse.erreur) { statut(reponse.erreur, true); return; }
   DONNEES.genere = reponse.texte;
-  vueActive = "genere";
-  document.querySelectorAll(".bascule").forEach(a => a.setAttribute("aria-selected", a.dataset.vue === "genere"));
-  afficherCorpus();
+  afficherVue("genere");
 };
 
 $("lancer").onclick = analyser;
 $("titre").addEventListener("keydown", e => { if (e.key === "Enter") analyser(); });
+
+function noteCesar(saisie, decalage){
+  return saisie !== decalage ? " (cle " + saisie + " hors 0-25, utilisee " + decalage + " par modulo 26)" : "";
+}
 
 $("crypto").onclick = async () => {
   if (!DONNEES) { statut("Analysez d'abord un article.", true); return; }
   const saisie = parseInt($("cesar").value, 10);
   if (isNaN(saisie)) { statut("Entrez une cle Cesar : entier entre 0 et 25.", true); return; }
   const decalage = ((saisie % 26) + 26) % 26;
-  const note = saisie !== decalage ? " (cle " + saisie + " hors 0-25, utilisee " + decalage + " par modulo 26)" : "";
-  $("crypto").disabled = true;
   statut("Chiffrement avec la cle " + decalage + "\\u2026");
-  const reponse = await fetch("/api/cesar?decalage=" + decalage + "&t=" + Date.now()).then(r => r.json());
-  $("crypto").disabled = false;
+  const reponse = await charger("/api/cesar?decalage=" + decalage + "&t=" + Date.now(), $("crypto"));
   if (reponse.erreur) { statut(reponse.erreur, true); return; }
-  DONNEES.cryptogramme = reponse.cryptogramme;
-  vueActive = "crypto";
-  document.querySelectorAll(".bascule").forEach(a => a.setAttribute("aria-selected", a.dataset.vue === "crypto"));
-  afficherCorpus();
-  statut("Cryptogramme genere (cle " + reponse.decalage + ", " + nombre(reponse.cryptogramme.length) + " caracteres)." + note);
+  DONNEES.crypto.cesar = reponse.cryptogramme;
+  vueCible = "cesar";
+  rafraichirBoutons();
+  afficherVue("crypto");
+  statut("Cryptogramme genere (cle " + reponse.decalage + ", " + nombre(reponse.cryptogramme.length) + " caracteres)."
+    + noteCesar(saisie, decalage));
 };
 
 $("dechiffre").onclick = async () => {
   if (!DONNEES) { statut("Analysez d'abord un article.", true); return; }
-  if (!DONNEES.cryptogramme) { statut("Generer d'abord un cryptogramme a dechiffrer.", true); return; }
+  if (!DONNEES.crypto.cesar) { statut("Generer d'abord un cryptogramme a dechiffrer.", true); return; }
   const saisie = parseInt($("cesar").value, 10);
   if (isNaN(saisie)) { statut("Entrez une cle Cesar : entier entre 0 et 25.", true); return; }
   const decalage = ((saisie % 26) + 26) % 26;
-  const note = saisie !== decalage ? " (cle " + saisie + " hors 0-25, utilisee " + decalage + " par modulo 26)" : "";
-  $("dechiffre").disabled = true;
   statut("Dechiffrement avec la cle " + decalage + "\\u2026");
-  const reponse = await fetch("/api/cesar?decalage=" + decalage + "&mode=dechiffre&t=" + Date.now()).then(r => r.json());
-  $("dechiffre").disabled = false;
+  const reponse = await charger("/api/cesar?decalage=" + decalage + "&mode=dechiffre&t=" + Date.now(), $("dechiffre"));
   if (reponse.erreur) { statut(reponse.erreur, true); return; }
   DONNEES.dechiffre = reponse.texte;
-  vueActive = "dechiffre";
-  document.querySelectorAll(".bascule").forEach(a => a.setAttribute("aria-selected", a.dataset.vue === "dechiffre"));
-  afficherCorpus();
-  statut("Dechiffrement effectue avec la cle " + reponse.decalage + "." + note);
+  afficherVue("dechiffre");
+  statut("Dechiffrement effectue avec la cle " + reponse.decalage + "." + noteCesar(saisie, decalage));
 };
 
 $("attaque-btn").onclick = async () => {
   if (!DONNEES) { statut("Analysez d'abord un article.", true); return; }
-  if (!DONNEES.cryptogramme) { statut("Generer d'abord un cryptogramme a attaquer.", true); return; }
-  $("attaque-btn").disabled = true;
+  if (!DONNEES.crypto.cesar) { statut("Generer d'abord un cryptogramme a attaquer.", true); return; }
   statut("Attaque frequentielle en cours\\u2026");
-  const reponse = await fetch("/api/attaque?t=" + Date.now()).then(r => r.json());
-  $("attaque-btn").disabled = false;
+  const reponse = await charger("/api/attaque?t=" + Date.now(), $("attaque-btn"));
   if (reponse.erreur) { statut(reponse.erreur, true); return; }
   DONNEES.attaque = reponse;
   dessinerAttaque();
-  vueActive = "attaque";
-  document.querySelectorAll(".bascule").forEach(a => a.setAttribute("aria-selected", a.dataset.vue === "attaque"));
-  afficherCorpus();
+  afficherVue("attaque");
   statut("Cle la plus probable : " + reponse.decalage + ".");
 };
+
+// Chiffrement, dechiffrement et attaque des cifras a cle connue.
+async function chiffrer(cible){
+  const f = CIFRAS[cible];
+  const bouton = $("crypto" + suffixe(cible));
+  if (!DONNEES) { statut("Analysez d'abord un article.", true); return; }
+  const cle = lireCle(f.cle);
+  if (!cle) return;
+  statut(f.nom + " avec la cle " + cle + "\\u2026");
+  const reponse = await charger(f.url + "?cle=" + encodeURIComponent(cle) + "&mode=chiffre&t=" + Date.now(), bouton);
+  if (reponse.erreur) { statut(reponse.erreur, true); return; }
+  DONNEES.crypto[cible] = reponse.cryptogramme;
+  vueCible = cible;
+  rafraichirBoutons();
+  afficherVue("crypto");
+  statut("Cryptogramme " + f.nom + " genere (" + nombre(reponse.cryptogramme.length) + " caracteres) : vous pouvez decrypter ou attaquer.");
+}
+
+async function dechiffrer(cible){
+  const f = CIFRAS[cible];
+  const bouton = $("dechiffre" + suffixe(cible));
+  if (!DONNEES) { statut("Analysez d'abord un article.", true); return; }
+  if (!DONNEES.crypto[cible]) { statut("Generer d'abord le cryptogramme " + f.nom + ".", true); return; }
+  const cle = lireCle(f.cle);
+  if (!cle) return;
+  statut("Dechiffrement " + f.nom + " avec la cle " + cle + "\\u2026");
+  const reponse = await charger(f.url + "?cle=" + encodeURIComponent(cle) + "&mode=dechiffre&t=" + Date.now(), bouton);
+  if (reponse.erreur) { statut(reponse.erreur, true); return; }
+  DONNEES.dechiffre = reponse.texte;
+  vueCible = cible;
+  afficherVue("dechiffre");
+  statut("Dechiffrement " + f.nom + " effectue avec la cle " + reponse.cle + ".");
+}
+
+async function attaquerColonnes(cible){
+  const f = CIFRAS[cible];
+  const bouton = $("attaque-btn" + suffixe(cible));
+  if (!DONNEES) { statut("Analysez d'abord un article.", true); return; }
+  if (!DONNEES.crypto[cible]) { statut("Generer d'abord le cryptogramme " + f.nom + ".", true); return; }
+  const periode = lirePeriode(f.periode);
+  if (!periode) return;
+  statut("Attaque " + f.nom + " par colonnes, periode " + periode + "\\u2026");
+  const reponse = await charger("/api/attaque-" + cible + "?periode=" + periode + "&t=" + Date.now(), bouton);
+  if (reponse.erreur) { statut(reponse.erreur, true); return; }
+  DONNEES.attaque = reponse;
+  dessinerAttaque();
+  afficherVue("attaque");
+  statut("Decalages lus : " + reponse.cle_lue + " \\u00b7 ecart mini " + reponse.fiabilite + ".");
+}
+
+$("crypto-vigenere").onclick = () => chiffrer("vigenere");
+$("dechiffre-vigenere").onclick = () => dechiffrer("vigenere");
+$("crypto-permutation").onclick = () => chiffrer("permutation");
+$("dechiffre-permutation").onclick = () => dechiffrer("permutation");
+$("attaque-btn-vigenere").onclick = () => attaquerColonnes("vigenere");
+$("attaque-btn-permutation").onclick = () => attaquerColonnes("permutation");
 </script>
 </body>
 </html>
