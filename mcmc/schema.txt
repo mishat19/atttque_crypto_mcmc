@@ -1,37 +1,26 @@
 flowchart TD
-    Start([Début de l'attaque MCMC]) --> InitChoice{Choix de la clé initiale k}
+    A([Début]) --> B[Lire les textes]
+    B --> C{Mode}
 
-    subgraph Init [1. Initialisation]
-        InitChoice -- "Clé quelconque" --> InitRand[Générer une clé k au hasard]
-        InitChoice -- "Clé 'à priori intéressante'" --> InitHeur[Générer k via analyse de fréquences]
-        InitRand --> CalcInit["Calculer le score S(k) = ∏ r(x,y)^fk(x,y)"]
-        InitHeur --> CalcInit
-    end
+    C -->|Lettres| D[Clé initiale : 26 lettres]
+    C -->|Positions| E["ℓ = 2 ; clé initiale : permutation"]
 
-    CalcInit --> Loop((Nouvelle\nitération))
+    D --> F["Score S(k)"]
+    E --> F
 
-    subgraph Mutation [2. Mutation de l'état]
-        Loop --> MutChoice{Type de chiffrement ?}
-        
-        MutChoice -- "Substitution de lettres" --> MutSubst["k' = transposition (échange de 2 lettres au hasard)"]
-        MutChoice -- "Permutation de positions" --> MutPerm["k' = déplacement d'un sous-bloc (pour une longueur l fixée)"]
-    end
+    F --> G[Proposer k']
+    G --> H{"U < S(k') / S(k) ?"}
 
-    subgraph Selection [3. Sélection Score et Probabilité]
-        MutSubst --> CalcScore["Calculer S(k')"]
-        MutPerm --> CalcScore
-        
-        CalcScore --> RandU["Tirer au sort U uniforme continu dans ]0; 1["]
-        RandU --> Condition{"U < S(k') / S(k) ?"}
-        
-        Condition -- Oui --> Accept["Accepter : k = k'"]
-        Condition -- Non --> Refuse["Refuser : on garde k"]
-    end
+    H -->|Oui| I[k ← k']
+    H -->|Non| J[Garder k]
 
-    Accept --> CheckStop{Assez de transitions ?}
-    Refuse --> CheckStop
-    
-    CheckStop -- Non --> Loop
-    CheckStop -- Oui --> End(["Fin : Séquence terminée"])
-    
-    End --> HumanChoice["L'humain choisit la bonne clé\nparmi la petite famille de clés 'crédibles'"]
+    I --> K{Fin des itérations ?}
+    J --> K
+    K -->|Non| G
+    K -->|Oui| L[Garder les N meilleures clés]
+
+    L --> M{"Positions et ℓ < ℓmax ?"}
+    M -->|Oui| N[ℓ ← ℓ + 1]
+    N --> E
+    M -->|Non| O[Afficher et choisir]
+    O --> P([Fin])

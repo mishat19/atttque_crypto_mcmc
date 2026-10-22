@@ -43,6 +43,7 @@ from chiffrements.chiffrement_vigenere import (
     cle_inverse_vigenere,
     dechiffre_vigenere_positions,
 )
+from permutation.bloc import _ordre, _rang, _permuter
 
 
 # =============== 1. CLÉ ===============
@@ -132,43 +133,10 @@ def _exiger(cle) -> dict:
     return cle if isinstance(cle, dict) else definir_cle(cle)
 
 
-# =============== PERMUTATION DE POSITION ===============
-
-def _ordre(permutation, taille):
-    """Ordre de lecture des sources dans un bloc de `taille` positions.
-
-    Pour `taille` égale à la longueur de la clé, la source de rang k est celle
-    qui arrive en position k.
-    """
-    return sorted(range(taille), key=lambda i: (permutation[i], i))
-
-
-def _rang(permutation, taille):
-    """Réciproque de _ordre sur un bloc de `taille` positions."""
-    rang = [0] * taille
-    for position, source in enumerate(_ordre(permutation, taille)):
-        rang[source] = position
-    return rang
-
-
-def _permuter(texte, permutation, dechiffrer=False):
-    """Réordonne les positions de `texte` bloc par bloc.
-
-    Chaque bloc fait la longueur de la clé. Un dernier bloc plus court est
-    réordonné sur lui-même, la permutation reste donc réversible.
-    """
-    longueur = len(permutation)
-    resultat = []
-
-    for debut in range(0, len(texte), longueur):
-        bloc = texte[debut:debut + longueur]
-        ordre = _rang(permutation, len(bloc)) if dechiffrer else _ordre(permutation, len(bloc))
-        resultat.append("".join(bloc[i] for i in ordre))
-
-    return "".join(resultat)
-
-
 # =============== 2. ET 4. CHIFFREMENT / DÉCHIFFREMENT ===============
+#
+# Les helpers _ordre, _rang et _permuter sont communs avec la permutation de
+# bloc pure : voir permutation/bloc.py.
 
 def chiffre_cryptogramme(texte_clair, cle) -> str:
     """Applique la clé (Vigenère positionnel puis permutation) pour produire un cryptogramme."""

@@ -24,3 +24,19 @@ def cle_heuristique(chiffre, reference):
 
     association = dict(zip(ordre_frequences(chiffre), ordre_frequences(reference)))
     return "".join(association[c] for c in LETTRES)
+
+
+def cle_aleatoire_positions(longueur):
+    """Permutation aléatoire de ``0..longueur-1`` pour le chiffrement par blocs."""
+    if longueur < 2:
+        raise ValueError("La longueur de clé doit être au moins 2.")
+    cle = list(range(longueur))
+    random.shuffle(cle)
+    return tuple(cle)
+
+
+def cle_identite_positions(longueur):
+    """Permutation identité : utile comme point de départ déterministe."""
+    if longueur < 1:
+        raise ValueError("La longueur de clé doit être positive.")
+    return tuple(range(longueur))
