@@ -1,26 +1,40 @@
 flowchart TD
     A([Début]) --> B[Lire les textes]
-    B --> C{Mode}
+    B --> C{Choisir le mode}
 
-    C -->|Lettres| D[Clé initiale : 26 lettres]
-    C -->|Positions| E["ℓ = 2 ; clé initiale : permutation"]
+    subgraph SUB["Substitution de lettres"]
+        S1["Clé initiale : 26 lettres<br/>Score S(k)"]
+        S2[Proposer k' : échanger 2 lettres]
+        S3{"U < S(k') / S(k) ?"}
+        S4{Fin des itérations ?}
+        S5["Garder les N meilleures clés<br/>et afficher"]
 
-    D --> F["Score S(k)"]
-    E --> F
+        S1 --> S2 --> S3
+        S3 -->|"Oui : k ← k'"| S4
+        S3 -->|"Non : garder k"| S4
+        S4 -->|Non| S2
+        S4 -->|Oui| S5
+    end
 
-    F --> G[Proposer k']
-    G --> H{"U < S(k') / S(k) ?"}
+    subgraph PERM["Permutation de positions"]
+        P1["Clé initiale : permutation de 0..ℓ−1<br/>Score S(k)"]
+        P2[Proposer k' : déplacer un sous-bloc]
+        P3{"U < S(k') / S(k) ?"}
+        P4{Fin des itérations ?}
+        P5[Garder les N meilleures clés]
+        P6{"ℓ < ℓmax ?"}
+        P7[Afficher et choisir]
 
-    H -->|Oui| I[k ← k']
-    H -->|Non| J[Garder k]
+        P1 --> P2 --> P3
+        P3 -->|"Oui : k ← k'"| P4
+        P3 -->|"Non : garder k"| P4
+        P4 -->|Non| P2
+        P4 -->|Oui| P5 --> P6
+        P6 -->|"Oui : ℓ ← ℓ + 1"| P1
+        P6 -->|Non| P7
+    end
 
-    I --> K{Fin des itérations ?}
-    J --> K
-    K -->|Non| G
-    K -->|Oui| L[Garder les N meilleures clés]
-
-    L --> M{"Positions et ℓ < ℓmax ?"}
-    M -->|Oui| N[ℓ ← ℓ + 1]
-    N --> E
-    M -->|Non| O[Afficher et choisir]
-    O --> P([Fin])
+    C -->|"Substitution de lettres"| S1
+    C -->|"Permutation de positions : ℓ = 2"| P1
+    S5 --> Z([Fin])
+    P7 --> Z
