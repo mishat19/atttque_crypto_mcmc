@@ -1,0 +1,37 @@
+flowchart TD
+    Start([Début de l'attaque MCMC]) --> InitChoice{Choix de la clé initiale k}
+
+    subgraph Init [1. Initialisation]
+        InitChoice -- "Clé quelconque" --> InitRand[Générer une clé k au hasard]
+        InitChoice -- "Clé 'à priori intéressante'" --> InitHeur[Générer k via analyse de fréquences]
+        InitRand --> CalcInit["Calculer le score S(k) = ∏ r(x,y)^fk(x,y)"]
+        InitHeur --> CalcInit
+    end
+
+    CalcInit --> Loop((Nouvelle\nitération))
+
+    subgraph Mutation [2. Mutation de l'état]
+        Loop --> MutChoice{Type de chiffrement ?}
+        
+        MutChoice -- "Substitution de lettres" --> MutSubst["k' = transposition (échange de 2 lettres au hasard)"]
+        MutChoice -- "Permutation de positions" --> MutPerm["k' = déplacement d'un sous-bloc (pour une longueur l fixée)"]
+    end
+
+    subgraph Selection [3. Sélection Score et Probabilité]
+        MutSubst --> CalcScore["Calculer S(k')"]
+        MutPerm --> CalcScore
+        
+        CalcScore --> RandU["Tirer au sort U uniforme continu dans ]0; 1["]
+        RandU --> Condition{"U < S(k') / S(k) ?"}
+        
+        Condition -- Oui --> Accept["Accepter : k = k'"]
+        Condition -- Non --> Refuse["Refuser : on garde k"]
+    end
+
+    Accept --> CheckStop{Assez de transitions ?}
+    Refuse --> CheckStop
+    
+    CheckStop -- Non --> Loop
+    CheckStop -- Oui --> End(["Fin : Séquence terminée"])
+    
+    End --> HumanChoice["L'humain choisit la bonne clé\nparmi la petite famille de clés 'crédibles'"]
