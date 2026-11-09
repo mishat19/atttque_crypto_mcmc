@@ -5,8 +5,6 @@ Lancement depuis la racine du dépôt :
     python3 mcmc/tests/test_mcmc.py
 """
 
-from __future__ import annotations
-
 import math
 import random
 import sys
@@ -18,7 +16,7 @@ RACINE = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(RACINE))
 sys.path.insert(0, str(RACINE / "mcmc"))
 
-from permutation.bloc import (  # noqa: E402
+from permutation.bloc import (
     chiffrer as chiffrer_positions,
     cle_inverse as cle_inverse_positions,
     definir_cle as definir_cle_positions,
@@ -26,28 +24,28 @@ from permutation.bloc import (  # noqa: E402
     formater_cle as formater_cle_positions,
     verifier_cle as verifier_cle_positions,
 )
-from permutation.cryptogramme import (  # noqa: E402
+from permutation.cryptogramme import (
     chiffre_cryptogramme,
     definir_cle as definir_cle_combinee,
     dechiffre_cryptogramme,
 )
-from utils.initialisation import cle_aleatoire_positions  # noqa: E402
-from utils.mutation import deplacer_bloc, muter_positions  # noqa: E402
-from utils.score import (  # noqa: E402
+from utils.initialisation import cle_aleatoire_positions
+from utils.mutation import deplacer_bloc, muter_positions
+from utils.score import (
     construire_log_r,
     construire_r,
     lire_chiffre,
     score_log,
     score_texte,
 )
-from utils.substitution import (  # noqa: E402
+from utils.substitution import (
     LETTRES,
     chiffrer as chiffrer_lettres,
     cle_inverse as cle_inverse_lettres,
     dechiffrer as dechiffrer_lettres,
     verifier_cle as verifier_cle_lettres,
 )
-from main import marche_mcmc  # noqa: E402
+from main import marche_mcmc
 
 
 class TestPermutationBloc(unittest.TestCase):
@@ -159,8 +157,6 @@ class TestScore(unittest.TestCase):
 
 
 class TestPermutationCombinee(unittest.TestCase):
-    """Non-régression après le partage des helpers de permutation."""
-
     def test_aller_retour(self):
         message = "UN TEXTE ASSEZ LONG POUR TESTER LA PERMUTATION DES POSITIONS"
         cle = definir_cle_combinee("LEMON")

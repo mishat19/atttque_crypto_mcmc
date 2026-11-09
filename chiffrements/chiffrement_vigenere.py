@@ -18,11 +18,7 @@ def _valider(cle):
 
 
 def chiffre_vigenere(texte, cle):
-    """Chiffre un texte avec le chiffrement de Vigenère.
-
-    La clé n'avance que sur les lettres (les espaces et la
-    ponctuation ne consomment pas de caractère de clé).
-    """
+    """Chiffre avec Vigenère ; la clé n'avance que sur les lettres."""
     cle = _valider(cle)
 
     resultat = ""
@@ -38,13 +34,7 @@ def chiffre_vigenere(texte, cle):
 
 
 def chiffre_vigenere_positions(texte, cle):
-    """Vigenère positionnel : la clé se répète tous les len(cle) caractères.
-
-    Contrairement à chiffre_vigenere, les espaces et la ponctuation consomment
-    eux aussi un caractère de clé. C'est cette variante qu'impose une
-    permutation de position, où le décalage doit dépendre de la position dans
-    le bloc et non du nombre de lettres déjà vues.
-    """
+    """Vigenère positionnel : la clé avance sur tous les caractères, espaces compris."""
     cle = _valider(cle)
 
     return "".join(
@@ -66,13 +56,3 @@ def dechiffre_vigenere(texte, cle):
 def dechiffre_vigenere_positions(texte, cle):
     """Déchiffre un texte chiffré avec le Vigenère positionnel."""
     return chiffre_vigenere_positions(texte, cle_inverse_vigenere(cle))
-
-
-# if __name__ == "__main__":
-#     message = "ATTACK AT DAWN"
-#     cle = "LEMON"
-#     chiffre = chiffre_vigenere(message, cle)
-#     print("Clair   :", message)
-#     print("Clé     :", cle)
-#     print("Chiffre :", chiffre)
-#     print("Déchiffre :", dechiffre_vigenere(chiffre, cle))

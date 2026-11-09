@@ -6,8 +6,6 @@ et s'ouvre dans le navigateur : aucune dependance externe (stdlib uniquement).
 Lancement :  python utils/app.py
 """
 
-from __future__ import annotations
-
 import http.server
 import json
 import random
@@ -256,9 +254,9 @@ def attaquer_permutation(periode: int) -> dict:
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
-    """Sert la page et les points d'entree JSON (analyse, generation, cifras, attaques)."""
+    """Sert la page et les points d'entree JSON."""
 
-    def do_GET(self) -> None:  # noqa: N802 - nom impose par BaseHTTPRequestHandler
+    def do_GET(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
         query = urllib.parse.parse_qs(parsed.query)
 

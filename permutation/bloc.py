@@ -17,8 +17,6 @@ valeurs de la clé entre elles : c'est la convention qui redonne exactement
 ``BONJOUR -> OJNBURO`` et qui reste réversible.
 """
 
-from __future__ import annotations
-
 import re
 
 
@@ -27,15 +25,14 @@ import re
 def _normaliser_cle(cle) -> tuple[int, ...]:
     """Transforme une clé en tuple d'entiers.
 
-    Accepte ``"3021"``, ``"3 0 2 1"``, ``"3,0,2,1"``, une liste ou un tuple.
-    Pour une longueur supérieure à 10, utiliser des séparateurs : ``"10 11 0"``.
+    Accepte "3021", "3 0 2 1", "3,0,2,1", une liste ou un tuple.
+    Au-delà de 10 positions, séparer les valeurs : "10 11 0".
     """
     if isinstance(cle, str):
         texte = cle.strip()
         if not texte:
             raise ValueError("La clé ne peut pas être vide.")
 
-        # "3021" : un chiffre par position.  Au-delà de 10, il faut séparer.
         if texte.isdigit():
             valeurs = [int(c) for c in texte]
         else:
@@ -90,12 +87,7 @@ def formater_cle(cle) -> str:
 # =============== PERMUTATION ===============
 
 def _ordre(permutation, taille: int) -> list[int]:
-    """Ordre de lecture des sources dans un bloc de ``taille`` positions.
-
-    Les indices sont classés par valeur de clé croissante.  Pour un bloc plein,
-    c'est exactement la permutation ; pour un bloc incomplet, on classe les
-    premières valeurs de la clé entre elles.
-    """
+    """Indices du bloc triés par valeur de clé (gère le dernier bloc incomplet)."""
     return sorted(range(taille), key=lambda i: (permutation[i], i))
 
 

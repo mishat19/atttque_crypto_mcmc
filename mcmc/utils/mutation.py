@@ -2,11 +2,7 @@ import random
 
 
 def muter_lettres(cle):
-    """Échange deux lettres chiffrées prises au hasard dans la clé.
-
-    La clé est une chaîne de 26 lettres (clé de déchiffrement).  La proposition
-    est symétrique : échanger i et j a la même probabilité que échanger j et i.
-    """
+    """Échange deux lettres prises au hasard dans la clé (proposition symétrique)."""
     i, j = random.sample(range(len(cle)), 2)
     lettres = list(cle)
     lettres[i], lettres[j] = lettres[j], lettres[i]
@@ -14,12 +10,7 @@ def muter_lettres(cle):
 
 
 def deplacer_bloc(cle, longueur_bloc, i, d):
-    """Retire ``cle[i:i+longueur_bloc]`` et le réinsère à l'indice ``d``.
-
-    Fonction déterministe utilisée par ``muter_positions`` et par les tests :
-    elle permet de vérifier que le déplacement ``(i, L, d)`` a bien pour
-    réciproque ``(d, L, i)``.
-    """
+    """Retire cle[i:i+longueur_bloc] et le réinsère à l'indice d."""
     n = len(cle)
     if not 1 <= longueur_bloc <= n - 1:
         raise ValueError("La longueur du bloc doit être dans 1..n-1.")
@@ -34,18 +25,10 @@ def deplacer_bloc(cle, longueur_bloc, i, d):
 
 
 def muter_positions(cle):
-    """Déplace un sous-bloc de la permutation à une autre position.
+    """Déplace un sous-bloc de longueur L de la position i vers la position d.
 
-    On choisit une longueur de bloc L, un début i et une destination d, puis on
-    retire ``cle[i:i+L]`` et on le réinsère à l'indice ``d`` du reste.
-
-    La proposition est symétrique : l'inverse du déplacement ``(i, L, d)`` est
-    ``(d, L, i)``.  C'est ce qui permet d'utiliser le rapport d'acceptation
-    ``S(k') / S(k)`` sans correction de Hastings.
-
-    Le cas ``i == d`` est un déplacement identitaire : il laisse la clé
-    inchangée et garantit une auto-transition de probabilité strictement
-    positive (donc l'apériodicité).
+    Symétrique : (i, L, d) est annulé par (d, L, i).
+    Le cas i == d laisse la clé inchangée (apériodicité).
     """
     n = len(cle)
     if n < 2:
@@ -55,7 +38,3 @@ def muter_positions(cle):
     i = random.randint(0, n - longueur_bloc)
     d = random.randint(0, n - longueur_bloc)
     return deplacer_bloc(cle, longueur_bloc, i, d)
-
-
-# Ancien nom conservé pour les scripts existants.
-muter = muter_lettres

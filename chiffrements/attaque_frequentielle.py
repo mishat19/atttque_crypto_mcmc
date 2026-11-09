@@ -1,21 +1,6 @@
 """Attaque fréquentielle d'un chiffre polyalphabétique de période L.
 
-Un chiffre polyalphabétique de période L revient à L chiffres de César
-indépendants : à l'intérieur d'un bloc de L caractères, la position j reçoit
-toujours le même décalage, quels que soient les blocs. Une colonne du
-cryptogramme (les positions j, j+L, j+2L...) est donc un César à part entière,
-que l'on attaque séparément par sa distribution de lettres.
-
-C'est aussi le cas du chiffrement par permutation de position de
-permutation.cryptogramme : la permutation envoie toute une colonne source vers
-une même colonne destination, et le décalage Vigenère suit la colonne. Chaque
-colonne du cryptogramme porte donc encore un décalage unique, et la même
-attaque s'applique sans changement.
-
-Une nuance pour la permutation : les décalages sont retrouvés colonne par
-colonne, mais ils correspondent aux colonnes destination, pas à l'ordre des
-lettres de la clé. Le texte clair est obtenu, le mot clé ne l'est pas sans un
-travail de couplage supplémentaire.
+Les positions j, j+L, j+2L... forment un César, attaqué par sa distribution de lettres.
 """
 
 import sys
@@ -37,12 +22,7 @@ FREQUENCES_FR = {
 
 
 def _indices(texte, flux):
-    """Indices sur lesquels la clé se répète.
-
-    "lettres" : la clé de Vigenère n'avance que sur les lettres.
-    "positions" : la permutation de position réordonne toutes les positions,
-    espaces compris, donc la clé se répète sur les positions brutes.
-    """
+    """Indices sur lesquels la clé se répète : "lettres" (Vigenère) ou "positions" (permutation)."""
     if flux == "lettres":
         return [i for i, c in enumerate(texte) if c.upper() in ALPHABET]
     if flux == "positions":
@@ -51,12 +31,7 @@ def _indices(texte, flux):
 
 
 def colonnes(texte, periode, flux="lettres"):
-    """Découpe le texte en `periode` colonnes d'indices.
-
-    Chaque colonne reçoit toujours le même décalage. La coupe se fait sur les
-    indices et non sur des tranches de texte, donc la reconstruction est exacte
-    quels que soient les espaces et la ponctuation.
-    """
+    """Découpe le texte en `periode` colonnes d'indices de même décalage."""
     if periode < 1:
         raise ValueError("La periode doit etre un entier positif.")
     indices = _indices(texte, flux)
@@ -64,12 +39,7 @@ def colonnes(texte, periode, flux="lettres"):
 
 
 def scores_decalages(texte):
-    """Note chaque decalage candidat (0 a 25).
-
-    Chaque decalage est note par la correlation entre les frequences observees
-    dans le texte et les frequences connues du francais : plus la note est
-    haute, plus le decalage est probable.
-    """
+    """Note chaque décalage (0 à 25) par corrélation avec les fréquences du français."""
     lettres = "".join(c for c in texte.upper() if c in ALPHABET)
     if not lettres:
         raise ValueError("Le cryptogramme ne contient aucune lettre.")
@@ -87,17 +57,7 @@ def scores_decalages(texte):
 
 
 def attaque_frequentielle_colonnes(cryptogramme, periode, flux="lettres"):
-    """Attaque par colonnes : retrouve un decalage par colonne du cryptogramme.
-
-    Colonnes trop courtes (< 100 lettres) ne sont pas fiables et le signalent
-    par un ecart faible entre le meilleur decalage et le deuxieme.
-
-    `flux` indique sur quoi la clé se répète. Sur "positions" (permutation de
-    position), les lettres obtenues sont bien les bonnes, mais chacune est
-    rendue a la place de sa colonne destination et non de sa colonne source :
-    le texte revient deciphre mais encore permute, et seule la permutation
-    manque encore.
-    """
+    """Retrouve un décalage par colonne du cryptogramme."""
     if periode > len(cryptogramme):
         raise ValueError("La periode ne peut pas depasser la taille du cryptogramme.")
 
@@ -138,24 +98,3 @@ def attaque_frequentielle_colonnes(cryptogramme, periode, flux="lettres"):
         "colonnes": resultats,
         "texte": "".join(clair),
     }
-
-
-# if __name__ == "__main__":
-#     from chiffrements.chiffrement_vigenere import chiffre_vigenere
-#     from permutation.cryptogramme import chiffre_cryptogramme, definir_cle
-#     phrase = ("LE CHIFFREMENT DE VIGENERE UTILISE UNE CLE REPETEE SUR LE TEXTE ET "
-#               "CHAQUE LETTRE DE LA CLE DECALE UNE POSITION DIFFERENTE LES LETTRES "
-#               "SUIVANTES SONT DONC CHIFFREES AUTREMENT COMME DANS CESAR ") * 10
-#     mot = "ORACLE"
-#     print("Longueur :", len(phrase))
-#
-#     resultat = attaque_frequentielle_colonnes(chiffre_vigenere(phrase, mot), len(mot))
-#     print("Vigenere     -> cle lue", resultat["cle_lue"], "| exact :", resultat["texte"] == phrase)
-#
-#     cle = definir_cle(mot)
-#     resultat = attaque_frequentielle_colonnes(
-#         chiffre_cryptogramme(phrase, cle), len(mot), flux="positions")
-#     print("Permutation  -> decalages", resultat["decalages"],
-#           "(shifts de la cle :", [ord(c) - 65 for c in mot], ")")
-#     print("Permutation  -> ecart mini", resultat["fiabilite"],
-#           "| positions encore melangees :", resultat["positions_melangees"])

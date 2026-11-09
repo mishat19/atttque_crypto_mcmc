@@ -18,8 +18,6 @@ Le score, la sélection et les statistiques de référence sont communs aux deux
 modes ; seule la façon de déchiffrer et de muter change.
 """
 
-from __future__ import annotations
-
 import argparse
 import math
 import random
@@ -31,25 +29,25 @@ RACINE = DOSSIER.parent
 sys.path.insert(0, str(RACINE))
 sys.path.insert(0, str(DOSSIER))
 
-from permutation.bloc import (  # noqa: E402
+from permutation.bloc import (
     cle_inverse as cle_inverse_positions,
     dechiffrer as dechiffrer_positions,
     formater_cle as formater_positions,
 )
-from utils.initialisation import (  # noqa: E402
+from utils.initialisation import (
     cle_aleatoire,
     cle_aleatoire_positions,
     cle_heuristique,
 )
-from utils.mutation import muter_lettres, muter_positions  # noqa: E402
-from utils.score import (  # noqa: E402
+from utils.mutation import muter_lettres, muter_positions
+from utils.score import (
     calculer_score_log,
     construire_log_r,
     lire_chiffre,
     lire_texte,
 )
-from utils.selection import accepter_log  # noqa: E402
-from utils.substitution import (  # noqa: E402
+from utils.selection import accepter_log
+from utils.substitution import (
     cle_inverse as cle_inverse_lettres,
     dechiffrer as dechiffrer_lettres,
 )
@@ -69,16 +67,9 @@ LONGUEUR_MAX_DEFAUT = 8
 
 def marche_mcmc(texte_chiffre, cle_initiale, log_r, dechiffrer, muter,
                 n_iterations, chauffe=0):
-    """Fait tourner la chaîne et renvoie les états visités après la chauffe.
-
-    Retour : ``(etats, candidats)``.
-
-    ``etats`` : ``{clé: {"score": log S(clé), "visites": nombre de visites}}``
-    pour les états réellement occupés après la chauffe.
-
-    ``candidats`` : ``{clé: {"score": ..., "propositions": ...}}`` pour toutes
-    les clés évaluées, acceptées ou non.  Cela permet d'afficher plusieurs
-    alternatives même quand la chaîne s'est concentrée sur un seul état.
+    """Fait tourner la chaîne. Renvoie (etats, candidats) :
+    etats     = clés occupées après la chauffe {clé: {score, visites}}
+    candidats = toutes les clés proposées      {clé: {score, propositions}}
     """
     if n_iterations <= chauffe:
         raise ValueError("Il faut au moins une itération après la période de chauffe.")
@@ -169,11 +160,7 @@ def fusionner_vue(etats, candidats):
 
 
 def classer(etats, n, critere="score"):
-    """Renvoie les ``n`` meilleurs états.
-
-    ``critere="score"`` classe par log S décroissant, puis par visites.
-    ``critere="visites"`` classe par nombre de visites, puis par score.
-    """
+    """Les n meilleurs états, par score ou par nombre de visites."""
     if critere == "visites":
         return sorted(
             etats.items(),
@@ -334,12 +321,7 @@ def attaque_positions(args):
         )
 
     print()
-    print("Les scores de plusieurs ℓ ne sont pas directement comparables :")
-    print("l'espace des clés grandit en ℓ! et un ℓ trop grand peut sur-ajuster.")
-    print("La colonne log S - log(ℓ!) est une correction grossière ;")
-    print("le choix final se fait en lisant les extraits déchiffrés.")
-    print("Une clé périodique peut aussi reproduire le texte avec un ℓ multiple")
-    print("de la vraie longueur : préférer la plus petite longueur lisible.")
+    print("Choisir la plus petite longueur ℓ dont le texte est lisible.")
 
 
 # =============== CLI ===============

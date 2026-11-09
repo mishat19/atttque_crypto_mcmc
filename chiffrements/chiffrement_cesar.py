@@ -16,11 +16,3 @@ def chiffre_cesar(texte, decalage):
 def dechiffre_cesar(texte, decalage):
     """Déchiffre un texte chiffré avec César (décalage inverse)."""
     return chiffre_cesar(texte, -decalage)
-
-
-# if __name__ == "__main__":
-#     message = "ATTACK AT DAWN"
-#     chiffre = chiffre_cesar(message, 3)
-#     print("Clair   :", message)
-#     print("Chiffre :", chiffre)
-#     print("Déchiffre :", dechiffre_cesar(chiffre, 3))

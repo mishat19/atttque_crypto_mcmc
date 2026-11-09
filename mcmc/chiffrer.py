@@ -9,8 +9,6 @@ Le script affiche la clé de chiffrement et la clé de déchiffrement attendues,
 puis écrit le cryptogramme dans ``chiffre.txt`` ou ``chiffre_positions.txt``.
 """
 
-from __future__ import annotations
-
 import argparse
 import random
 import sys
@@ -21,18 +19,18 @@ RACINE = DOSSIER.parent
 sys.path.insert(0, str(RACINE))
 sys.path.insert(0, str(DOSSIER))
 
-from permutation.bloc import (  # noqa: E402
+from permutation.bloc import (
     chiffrer as chiffrer_positions,
     cle_inverse as cle_inverse_positions,
     definir_cle as definir_cle_positions,
     formater_cle as formater_positions,
 )
-from utils.initialisation import (  # noqa: E402
+from utils.initialisation import (
     cle_aleatoire,
     cle_aleatoire_positions,
 )
-from utils.score import lire_texte  # noqa: E402
-from utils.substitution import (  # noqa: E402
+from utils.score import lire_texte
+from utils.substitution import (
     chiffrer as chiffrer_lettres,
     cle_inverse as cle_inverse_lettres,
     verifier_cle as verifier_cle_lettres,
