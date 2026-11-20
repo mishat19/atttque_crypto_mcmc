@@ -31,7 +31,7 @@ from substitution.cryptogramme import scores_attaque_frequentielle
 
 WIKI_UA = "MonScript/1.0 (simon@example.com)"
 SATES = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U",
-         "V", "W", "X", "Y", "Z", " "]
+         "V", "W", "X", "Y", "Z", "À", "Â", "Ä", "É", "È", "Ê", "Ë", "Î", "Ï", "Ô", "Ö", "Ù", "Û", "Ü", "Ç", " "]
 
 PORT = 8765
 
