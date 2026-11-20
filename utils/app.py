@@ -122,6 +122,14 @@ def text_generator(matrix, longueur=1000):
 
 ETAT: dict = {"matrix": None, "content": None, "crypto": {}}
 
+DICT_PATH = Path(__file__).resolve().parent.parent / "mcmc" / "dictionnaire_fr.txt"
+MOTS_FR = set()
+if DICT_PATH.exists():
+    for ligne in DICT_PATH.read_text(encoding="utf-8").splitlines():
+        mot = ligne.strip().upper()
+        if mot:
+            MOTS_FR.add(mot)
+
 
 def analyser(titre: str, lang: str, intro_seule: bool) -> dict:
     """Telecharge l'article et renvoie ce dont la page a besoin."""
@@ -364,6 +372,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._json(self._sur(dechiffre_candidat, cible, decalages, periode))
             return
 
+        if parsed.path == "/api/dictionnaire":
+            self._json({"mots": sorted(MOTS_FR)})
+            return
+
         self._repondre(404, "text/plain; charset=utf-8", b"Page inconnue")
 
     @staticmethod
@@ -507,6 +519,7 @@ h2{font-size:16px;font-weight:600;margin:0 0 3px}
 .bascule[aria-selected=true]{background:var(--panel);color:var(--ink)}
 .corpus{font-family:var(--mono);font-size:12.5px;line-height:1.85;max-width:74ch;
   word-break:break-word;max-height:420px;overflow-y:auto;color:#3A362F}
+.mot-inconnu{background:#FFF3A0;color:#3A362F;border-radius:2px;padding:0 1px}
 .longueur{margin-left:auto;display:flex;align-items:center;gap:9px;font-size:13px;color:var(--mute)}
 .longueur input{width:88px;min-width:0}
 
@@ -662,6 +675,7 @@ h2{font-size:16px;font-weight:600;margin:0 0 3px}
 const RAMPE = ["#F4F1E8","#E4E7DC","#CBD9CB","#ADC8B7","#8AB49F","#659E85","#43876C","#276F55","#14563F"];
 const $ = (id) => document.getElementById(id);
 let DONNEES = null, CASES = [], vueActive = "genere", vueCible = "cesar";
+let MOTS_FR = new Set();
 
 RAMPE.forEach(c => { const s = document.createElement("span"); s.style.background = c; $("echelle").appendChild(s); });
 
@@ -763,6 +777,9 @@ async function analyser(){
   DONNEES.crypto = {};
   DONNEES.dechiffre = null;
   DONNEES.attaque = null;
+  if (!MOTS_FR.size) {
+    fetch("/api/dictionnaire").then(r => r.json()).then(d => { (d.mots || []).forEach(m => MOTS_FR.add(m)); });
+  }
   $("sec-attaque").hidden = true;
   vueCible = "cesar";
   $("vide").hidden = true;
@@ -921,11 +938,21 @@ $("freq-plus").onclick = () => { PLIAGE.freq = !PLIAGE.freq; dessinerFrequences(
 $("dig-plus").onclick = () => { PLIAGE.dig = !PLIAGE.dig; dessinerDigrammes(); };
 
 function afficherCorpus(){
-  $("corpus").textContent = vueActive === "genere" ? DONNEES.genere
+  const texte = vueActive === "genere" ? DONNEES.genere
     : vueActive === "crypto" ? (DONNEES.crypto[vueCible] || "(Aucun cryptogramme genere.)")
     : vueActive === "dechiffre" ? (DONNEES.dechiffre || "(Aucun dechiffrement effectue.)")
     : vueActive === "attaque" ? (DONNEES.attaque ? DONNEES.attaque.texte : "(Aucune attaque effectuee.)")
     : DONNEES.content;
+  if (vueActive === "dechiffre" && DONNEES.dechiffre) {
+    $("corpus").innerHTML = DONNEES.dechiffre.split(/(\\s+)/).map(tok => {
+      if (/^\\s+$/.test(tok)) return tok;
+      const mot = tok.replace(/[^A-Z]/g, "");
+      if (mot && MOTS_FR.size && !MOTS_FR.has(mot)) return '<span class="mot-inconnu">' + tok + '</span>';
+      return tok;
+    }).join("");
+  } else {
+    $("corpus").textContent = texte;
+  }
   $("reglage").style.visibility = vueActive === "genere" ? "visible" : "hidden";
 }
 
@@ -943,31 +970,35 @@ function dessinerAttaque(){
       + attaque.cle_lue.split("").join(" / ") + " \\u00b7 ecart mini " + attaque.fiabilite
       + " (fiabilite)" + suite;
     const meilleur = attaque.decalages || [];
+    const toutes = [];
     attaque.colonnes.forEach((colonne, j) => {
-      const notes = colonne.notes || [];
-      const maxi = notes[0] ? notes[0].score : 1;
-      notes.forEach(s => {
-        const rang = document.createElement("div");
-        rang.className = "rang att";
-        rang.dataset.cible = attaque.cible;
-        rang.dataset.periode = attaque.periode;
-        rang.dataset.colonne = j;
-        rang.dataset.cle = s.decalage;
-        const estMeilleur = s.decalage === (meilleur[j] || 0);
-        rang.innerHTML =
-            '<span class="cle' + (estMeilleur ? " etoi" : "") + '"> col' + (j + 1) + " d" + s.decalage + (estMeilleur ? " \\u2605" : "") + '</span>'
-          + '<span class="piste"><i style="width:' + (s.score / maxi * 100).toFixed(1) + '%"></i></span>'
-          + '<span class="n">' + s.score.toFixed(4) + '</span>';
-        liste.appendChild(rang);
+      (colonne.notes || []).forEach(s => {
+        toutes.push({ col: j, decalage: s.decalage, score: s.score });
       });
+    });
+    toutes.sort((a, b) => b.score - a.score);
+    const maxi = toutes[0] ? toutes[0].score : 1;
+    toutes.slice(0, 5).forEach(e => {
+      const rang = document.createElement("div");
+      rang.className = "rang att";
+      rang.dataset.cible = attaque.cible;
+      rang.dataset.periode = attaque.periode;
+      rang.dataset.colonne = e.col;
+      rang.dataset.cle = e.decalage;
+      const estMeilleur = e.decalage === (meilleur[e.col] || 0);
+      rang.innerHTML =
+          '<span class="cle' + (estMeilleur ? " etoi" : "") + '"> col' + (e.col + 1) + " d" + e.decalage + (estMeilleur ? " \\u2605" : "") + '</span>'
+        + '<span class="piste"><i style="width:' + (e.score / maxi * 100).toFixed(1) + '%"></i></span>'
+        + '<span class="n">' + e.score.toFixed(4) + '</span>';
+      liste.appendChild(rang);
     });
     return;
   }
 
   const maxi = attaque.scores[0].score;
-  $("leg-att").textContent = "Cle la plus probable : " + attaque.decalage + " \\u2605   |   Notes des 26 decalages.";
+  $("leg-att").textContent = "Cle la plus probable : " + attaque.decalage + " \\u2605   |   Top 5 des 26 decalages.";
 
-  attaque.scores.forEach(s => {
+  attaque.scores.slice(0, 5).forEach(s => {
     const rang = document.createElement("div");
     rang.className = "rang att";
     rang.dataset.cible = "cesar";
