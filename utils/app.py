@@ -19,7 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from chiffrements.attaque_frequentielle import attaque_frequentielle_colonnes
+from chiffrements.attaque_frequentielle import attaque_frequentielle_colonnes, _unmixer, _indices
 from chiffrements.chiffrement_cesar import ALPHABET, chiffre_cesar, dechiffre_cesar
 from chiffrements.chiffrement_vigenere import chiffre_vigenere, dechiffre_vigenere
 from permutation.cryptogramme import (
@@ -253,6 +253,53 @@ def attaquer_permutation(periode: int) -> dict:
     return _attaquer_colonnes("permutation", "positions", periode)
 
 
+def dechiffre_candidat(cible: str, decalages: list, periode: int | None = None) -> dict:
+    """Dechiffre le cryptogramme avec une cle candidate (un decalage par colonne).
+
+    Les decalages non specifies utilisent le meilleur decalage de la derniere
+    attaque. Permet d'afficher le texte attaqué meme quand ce n'est pas le meilleur.
+    """
+    decalages = [int(d) % 26 for d in decalages]
+
+    if cible == "cesar":
+        return {"texte": dechiffre_cesar(_cryptogramme("cesar"), decalages[0]), "decalages": decalages}
+
+    if cible == "vigenere":
+        cle = "".join(chr(ord("A") + d) for d in decalages)
+        return {"texte": dechiffre_vigenere(_cryptogramme("vigenere"), cle), "cle": cle, "decalages": decalages}
+
+    if cible == "permutation":
+        if periode is None:
+            periode = len(decalages)
+        crypto = _cryptogramme("permutation")
+        attaque = attaque_frequentielle_colonnes(crypto, periode, "positions")
+        # Reconstruit le texte colonne par colonne avec les decalages candidats.
+        clair = list(crypto)
+        indices = _indices(crypto, "positions")
+        colonnes = [indices[j::periode] for j in range(min(periode, len(indices)))]
+        for j, inds in enumerate(colonnes):
+            dec = decalages[j] if j < len(decalages) else attaque["decalages"][j]
+            colonne = "".join(crypto[i] for i in inds)
+            corrigee = dechiffre_cesar(colonne, dec)
+            for i, c in zip(inds, corrigee):
+                clair[i] = c
+        texte = "".join(clair)
+        permutation = attaque.get("permutation")
+        melangees = True
+        if permutation is not None and len(texte) >= 200:
+            texte = _unmixer(texte, permutation, periode)
+            melangees = False
+        cle = "".join(chr(ord("A") + d) for d in decalages)
+        return {
+            "texte": texte,
+            "cle": cle,
+            "decalages": decalages,
+            "positions_melangees": melangees,
+        }
+
+    raise ValueError("Cible inconnue : " + cible)
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     """Sert la page et les points d'entree JSON."""
 
@@ -306,6 +353,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if parsed.path == "/api/attaque-permutation":
             periode = int(query.get("periode", ["5"])[0])
             self._json(self._sur(attaquer_permutation, periode))
+            return
+
+        if parsed.path == "/api/dechiffre-candidat":
+            cible = query.get("cible", ["cesar"])[0]
+            periode_raw = query.get("periode", ["0"])[0]
+            periode = int(periode_raw) if periode_raw and periode_raw != "0" else None
+            decalages_raw = query.get("decalages", [""])[0]
+            decalages = [int(d) for d in decalages_raw.split(",") if d.strip() != ""] if decalages_raw else []
+            self._json(self._sur(dechiffre_candidat, cible, decalages, periode))
             return
 
         self._repondre(404, "text/plain; charset=utf-8", b"Page inconnue")
@@ -886,15 +942,24 @@ function dessinerAttaque(){
     $("leg-att").textContent = "Periode " + attaque.periode + " \\u00b7 decalages "
       + attaque.cle_lue.split("").join(" / ") + " \\u00b7 ecart mini " + attaque.fiabilite
       + " (fiabilite)" + suite;
-    const maxi = Math.max.apply(null, attaque.colonnes.map(c => c.score));
-    attaque.colonnes.forEach(colonne => {
-      const rang = document.createElement("div");
-      rang.className = "rang fige";
-      rang.innerHTML = '<span class="cle etoi"> ' + colonne.colonne + '</span>'
-        + '<span class="piste"><i style="width:' + (colonne.score / maxi * 100).toFixed(1) + '%"></i></span>'
-        + '<span class="n">+' + colonne.decalage + '</span>'
-        + '<span class="pc">' + nombre(colonne.lettres) + '</span>';
-      liste.appendChild(rang);
+    const meilleur = attaque.decalages || [];
+    attaque.colonnes.forEach((colonne, j) => {
+      const notes = colonne.notes || [];
+      const maxi = notes[0] ? notes[0].score : 1;
+      notes.forEach(s => {
+        const rang = document.createElement("div");
+        rang.className = "rang att";
+        rang.dataset.cible = attaque.cible;
+        rang.dataset.periode = attaque.periode;
+        rang.dataset.colonne = j;
+        rang.dataset.cle = s.decalage;
+        const estMeilleur = s.decalage === (meilleur[j] || 0);
+        rang.innerHTML =
+            '<span class="cle' + (estMeilleur ? " etoi" : "") + '"> col' + (j + 1) + " d" + s.decalage + (estMeilleur ? " \\u2605" : "") + '</span>'
+          + '<span class="piste"><i style="width:' + (s.score / maxi * 100).toFixed(1) + '%"></i></span>'
+          + '<span class="n">' + s.score.toFixed(4) + '</span>';
+        liste.appendChild(rang);
+      });
     });
     return;
   }
@@ -905,6 +970,7 @@ function dessinerAttaque(){
   attaque.scores.forEach(s => {
     const rang = document.createElement("div");
     rang.className = "rang att";
+    rang.dataset.cible = "cesar";
     rang.dataset.cle = s.decalage;
     const best = s.decalage === attaque.decalage;
     rang.innerHTML =
@@ -918,13 +984,26 @@ function dessinerAttaque(){
 $("attaque-list").onclick = async (ev) => {
   const rang = ev.target.closest(".rang.att");
   if (!rang || !rang.dataset.cle) return;
+  const cible = rang.dataset.cible || "cesar";
   const cle = parseInt(rang.dataset.cle, 10);
-  statut("Dechiffrement avec la cle candidate " + cle + "\\u2026");
-  const reponse = await charger("/api/cesar?decalage=" + cle + "&mode=dechiffre&t=" + Date.now());
+  const periode = rang.dataset.periode ? parseInt(rang.dataset.periode, 10) : null;
+  const colonne = rang.dataset.colonne !== null ? parseInt(rang.dataset.colonne, 10) : null;
+  // Decalages candidats : le meilleur partout, celui clique a la colonne concernee.
+  let decalages;
+  if (cible === "cesar") {
+    decalages = [cle];
+  } else {
+    decalages = [...(DONNEES.attaque.decalages || [])];
+    if (colonne !== null && decalages.length > colonne) decalages[colonne] = cle;
+  }
+  statut("Dechiffrement avec le candidat " + (cible === "cesar" ? "decalage " : "colonne " + (colonne + 1) + " = ") + cle + "\\u2026");
+  const reponse = await charger("/api/dechiffre-candidat?cible=" + cible
+    + (periode !== null ? "&periode=" + periode : "")
+    + "&decalages=" + encodeURIComponent(decalages.join(",")) + "&t=" + Date.now());
   if (reponse.erreur) { statut(reponse.erreur, true); return; }
   DONNEES.dechiffre = reponse.texte;
   afficherVue("dechiffre");
-  statut("Dechiffrement affiche avec la cle candidate " + cle + ".");
+  statut("Dechiffrement affiche avec le candidat " + cle + ".");
 };
 
 document.querySelectorAll(".bascule").forEach(b => {

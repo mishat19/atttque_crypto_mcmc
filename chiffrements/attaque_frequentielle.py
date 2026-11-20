@@ -136,6 +136,7 @@ def attaque_frequentielle_colonnes(cryptogramme, periode, flux="lettres"):
     resultats = []
     decalages = []
     ecarts = []
+    permutation = None
 
     for index, indices in enumerate(colonnes(cryptogramme, periode, flux)):
         colonne = "".join(cryptogramme[i] for i in indices)
@@ -156,7 +157,7 @@ def attaque_frequentielle_colonnes(cryptogramme, periode, flux="lettres"):
             "score": round(score, 4),
             "ecart": round(ecart, 4),
             "lettres": len(indices),
-            "notes": [{"decalage": d, "score": round(s, 4)} for d, s in classement[:3]],
+            "notes": [{"decalage": d, "score": round(s, 4)} for d, s in classement],
         })
 
     texte = "".join(clair)
@@ -185,4 +186,5 @@ def attaque_frequentielle_colonnes(cryptogramme, periode, flux="lettres"):
         "positions_melangees": positions_melangees,
         "colonnes": resultats,
         "texte": texte,
+        "permutation": permutation,
     }
