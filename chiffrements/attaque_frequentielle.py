@@ -3,6 +3,8 @@
 Les positions j, j+L, j+2L... forment un César, attaqué par sa distribution de lettres.
 """
 
+import itertools
+import math
 import sys
 from pathlib import Path
 
@@ -19,6 +21,75 @@ FREQUENCES_FR = {
     "U": 5.74, "V": 1.32, "W": 0.04, "X": 0.46, "Y": 0.30,
     "Z": 0.12,
 }
+
+# Poids log approximatifs des bigrammes du français, utiles pour retrouver
+# l'ordre des positions quand le flux a ete melange par une permutation.
+_BIGRAM_LOG = {
+    "LE": 125, "DE": 112, "ES": 100, "EN": 96, "TE": 85, "RE": 75, "NT": 70,
+    "ON": 65, "LA": 60, "LI": 55, "SE": 50, "ME": 48, "NE": 45, "DU": 42,
+    "QU": 40, "EU": 38, "QUE": 35, "TU": 33, "ET": 120, "UN": 30, "DI": 28,
+    "CE": 26, "RA": 24, "MA": 22, "SA": 21, "ST": 20, "UR": 19, "SU": 18,
+    "PA": 17, "RI": 16, "RO": 15, "CO": 14, "AI": 13, "VE": 12, "EL": 11,
+    "EM": 9, "IL": 8, "PR": 7, "CH": 6, "TR": 5, "PO": 4, "OR": 4, "TA": 3,
+    "PE": 3, "MI": 2, "MO": 2, "BE": 2, "OC": 1, "EX": 1, "PL": 1,
+}
+
+
+def _log_bigram(a, b):
+    return math.log(_BIGRAM_LOG.get(a + b, 1))
+
+
+def _score_bigram(texte):
+    """Note moyenne par bigramme francophone d'un texte (majuscules uniquement)."""
+    score = 0.0
+    nombre = 0
+    for i in range(len(texte) - 1):
+        a, b = texte[i], texte[i + 1]
+        if "A" <= a <= "Z" and "A" <= b <= "Z":
+            score += _log_bigram(a, b)
+            nombre += 1
+    return score / max(nombre, 1)
+
+
+def _ordre(permutation, taille: int) -> list[int]:
+    """Indices d'un bloc tries par valeur de permutation (dernier bloc incomplet inclus)."""
+    return sorted(range(taille), key=lambda i: (permutation[i], i))
+
+
+def _unmixer(texte_partiel, permutation, periode: int) -> str:
+    """Annule le melange de positions bloc par bloc.
+
+    ``texte_partiel`` est le texte dont le Vigenere a ete retire colonne par
+    colonne mais dont les positions restent melangees.  Rendre ``permutation``
+    replace chaque caractere a sa position d'origine dans son bloc.
+    """
+    resultat = []
+    for debut in range(0, len(texte_partiel), periode):
+        bloc = texte_partiel[debut:debut + periode]
+        taille = len(bloc)
+        ordre = _ordre(permutation, taille)
+        replace = [""] * taille
+        for destination, source in enumerate(ordre):
+            replace[source] = bloc[destination]
+        resultat.append("".join(replace))
+    return "".join(resultat)
+
+
+def _recuperer_permutation(texte_partiel, decalages, periode: int) -> tuple[int, ...]:
+    """Cherche l'ordre de permutation qui remet le texte partiel en clair francais.
+
+    Teste toutes les permutations de ``range(periode)`` et retient celle dont
+    le demelange obtient le meilleur score bigramme.
+    """
+    meilleur_score = None
+    meilleure_permutation = None
+    for candidate in itertools.permutations(range(periode)):
+        candidate_texte = _unmixer(texte_partiel, candidate, periode)
+        score = _score_bigram(candidate_texte)
+        if meilleur_score is None or score > meilleur_score:
+            meilleur_score = score
+            meilleure_permutation = candidate
+    return meilleure_permutation
 
 
 def _indices(texte, flux):
@@ -88,13 +159,30 @@ def attaque_frequentielle_colonnes(cryptogramme, periode, flux="lettres"):
             "notes": [{"decalage": d, "score": round(s, 4)} for d, s in classement[:3]],
         })
 
+    texte = "".join(clair)
+    cle_lue = "".join(chr(ord("A") + d) for d in decalages)
+    positions_melangees = flux == "positions"
+
+    if flux == "positions" and len(texte) >= 200:
+        # decalages[k] est le decalage en position de sortie k = mot[inv_perm[k]].
+        # Pour retrouver le mot cle dans son ordre naturel : mot[j] = decalages[permutation[j]].
+        # Sous 200 caracteres, le score bigramme n'est pas assez fiable pour
+        # deviner l'ordre ; on garde alors l'ordre des colonnes (lettres trouvees,
+        # seul l'ordre manque).
+        permutation = _recuperer_permutation(texte, decalages, periode)
+        cle_lue = "".join(
+            chr(ord("A") + decalages[permutation[j]]) for j in range(periode)
+        )
+        texte = _unmixer(texte, permutation, periode)
+        positions_melangees = False
+
     return {
         "flux": flux,
         "periode": len(decalages),
         "decalages": decalages,
-        "cle_lue": "".join(chr(ord("A") + d) for d in decalages),
+        "cle_lue": cle_lue,
         "fiabilite": round(min(ecarts), 4) if ecarts else 0.0,
-        "positions_melangees": flux == "positions",
+        "positions_melangees": positions_melangees,
         "colonnes": resultats,
-        "texte": "".join(clair),
+        "texte": texte,
     }
