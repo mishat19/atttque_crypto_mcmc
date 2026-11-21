@@ -1180,6 +1180,9 @@ $("crypto").onclick = async () => {
   if (reponse.erreur) { statut(reponse.erreur, true); return; }
   DONNEES.crypto.cesar = reponse.cryptogramme;
   vueCible = "cesar";
+  DONNEES.dechiffre = null;
+  DONNEES.attaque = null;
+  $("sec-attaque").hidden = true;
   rafraichirBoutons();
   afficherVue("crypto");
   statut("Cryptogramme genere (cle " + reponse.decalage + ", " + nombre(reponse.cryptogramme.length) + " caracteres)."
@@ -1224,6 +1227,9 @@ async function chiffrer(cible){
   if (reponse.erreur) { statut(reponse.erreur, true); return; }
   DONNEES.crypto[cible] = reponse.cryptogramme;
   vueCible = cible;
+  DONNEES.dechiffre = null;
+  DONNEES.attaque = null;
+  $("sec-attaque").hidden = true;
   rafraichirBoutons();
   afficherVue("crypto");
   statut("Cryptogramme " + f.nom + " genere (" + nombre(reponse.cryptogramme.length) + " caracteres) : vous pouvez decrypter ou attaquer.");
