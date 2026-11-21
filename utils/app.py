@@ -32,7 +32,7 @@ from substitution.cryptogramme import scores_attaque_frequentielle
 
 WIKI_UA = "MonScript/1.0 (simon@example.com)"
 SATES = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U",
-         "V", "W", "X", "Y", "Z", "À", "Â", "Ä", "É", "È", "Ê", "Ë", "Î", "Ï", "Ô", "Ö", "Ù", "Û", "Ü", "Ç", " "]
+         "V", "W", "X", "Y", "Z", "Ã€", "Ã‚", "Ã„", "Ã‰", "Ãˆ", "ÃŠ", "Ã‹", "ÃŽ", "Ã", "Ã”", "Ã–", "Ã™", "Ã›", "Ãœ", "Ã‡", " "]
 
 PORT = 8765
 
@@ -116,8 +116,8 @@ def text_generator(matrix, longueur=1000):
 
     return text
 
-# Les textes générées n'ont pas de sens particulier puisque toutes les lettres sont mélangées. Les mots ne sont plus de la même taille mais
-# le texte reste cohérent en terme de structure à un texte normal.
+# Les textes gÃ©nÃ©rÃ©es n'ont pas de sens particulier puisque toutes les lettres sont mÃ©langÃ©es. Les mots ne sont plus de la mÃªme taille mais
+# le texte reste cohÃ©rent en terme de structure Ã  un texte normal.
 
 # =============== SERVEUR ==============
 
@@ -128,7 +128,7 @@ DICT_PATH = Path(__file__).resolve().parent.parent / "mcmc" / "dictionnaire_fr.t
 
 def _normaliser_mot_dico(mot: str) -> str:
     """Normalise un mot de dictionnaire en A-Z (accents/ligatures retires)."""
-    mot = mot.strip().upper().replace("Œ", "OE").replace("Æ", "AE")
+    mot = mot.strip().upper().replace("Å’", "OE").replace("Ã†", "AE")
     mot = unicodedata.normalize("NFD", mot)
     mot = "".join(c for c in mot if unicodedata.category(c) != "Mn")
     return "".join(c for c in mot if "A" <= c <= "Z")
@@ -140,6 +140,36 @@ if DICT_PATH.exists():
         mot = _normaliser_mot_dico(ligne)
         if mot:
             MOTS_FR.add(mot)
+
+
+def nettoyer_texte(raw: str) -> str:
+    content = raw.replace("\n", " ").upper()
+    content = "".join(c for c in content if c in SATES)
+    if len(content) % 2 == 1:
+        content += " "
+    return content
+
+
+def analyser_texte(texte: str, titre: str = "Fichier") -> dict:
+    content = nettoyer_texte(texte)
+    if not content:
+        return {"erreur": "Aucun texte exploitable dans le fichier."}
+
+    digrammes = digram_stats(content)
+    matrix = markov_matrix(digrammes)
+    ETAT["matrix"] = matrix
+    ETAT["content"] = content
+    ETAT["crypto"] = {}
+
+    return {
+        "titre": titre,
+        "content": content,
+        "stats": statistics(content),
+        "digrammes": digrammes,
+        "matrix": matrix,
+        "etats": SATES,
+        "genere": generer(2000).get("texte", ""),
+    }
 
 
 def analyser(titre: str, lang: str, intro_seule: bool) -> dict:
@@ -276,7 +306,7 @@ def dechiffre_candidat(cible: str, decalages: list, periode: int | None = None) 
     """Dechiffre le cryptogramme avec une cle candidate (un decalage par colonne).
 
     Les decalages non specifies utilisent le meilleur decalage de la derniere
-    attaque. Permet d'afficher le texte attaqué meme quand ce n'est pas le meilleur.
+    attaque. Permet d'afficher le texte attaquÃ© meme quand ce n'est pas le meilleur.
     """
     decalages = [int(d) % 26 for d in decalages]
 
@@ -387,6 +417,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._json({"mots": sorted(MOTS_FR)})
             return
 
+        self._repondre(404, "text/plain; charset=utf-8", b"Page inconnue")
+
+    def do_POST(self) -> None:
+        parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == "/api/analyse-texte":
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length).decode("utf-8", errors="replace")
+            try:
+                data = json.loads(body)
+            except json.JSONDecodeError:
+                data = {"texte": body}
+            titre = (data.get("titre") or "Fichier").strip()
+            texte = data.get("texte", "")
+            self._json(self._sur(analyser_texte, texte, titre))
+            return
         self._repondre(404, "text/plain; charset=utf-8", b"Page inconnue")
 
     @staticmethod
@@ -563,6 +608,11 @@ h2{font-size:16px;font-weight:600;margin:0 0 3px}
   </div>
   <label class="case"><input type="checkbox" id="intro"> Introduction seule</label>
   <button id="lancer">Analyser</button>
+  <div class="champ">
+    <label for="fichier">Fichier .txt</label>
+    <input type="file" id="fichier" accept=".txt,text/plain">
+  </div>
+  <button id="lancer-fichier" class="discret">Analyser fichier</button>
 </div>
 
 <div class="cifras">
@@ -950,7 +1000,7 @@ $("dig-plus").onclick = () => { PLIAGE.dig = !PLIAGE.dig; dessinerDigrammes(); }
 
 function cleMot(tok){
   return tok.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase()
-    .replace(/Œ/g, "OE").replace(/Æ/g, "AE").replace(/[^A-Z]/g, "");
+    .replace(/Å’/g, "OE").replace(/Ã†/g, "AE").replace(/[^A-Z]/g, "");
 }
 
 function echappeHtml(s){
@@ -1074,6 +1124,47 @@ $("regenerer").onclick = async () => {
 
 $("lancer").onclick = analyser;
 $("titre").addEventListener("keydown", e => { if (e.key === "Enter") analyser(); });
+
+async function analyserFichier(){
+  const fichier = $("fichier").files[0];
+  if (!fichier) { statut("Choisissez un fichier .txt.", true); return; }
+  $("lancer-fichier").disabled = true;
+  statut("Lecture de " + fichier.name + "\u2026");
+  const texte = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsText(fichier, "UTF-8");
+  });
+  const reponse = await fetch("/api/analyse-texte", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ titre: fichier.name, texte })
+  }).then(r => r.json());
+  $("lancer-fichier").disabled = false;
+  if (reponse.erreur) { statut(reponse.erreur, true); return; }
+  DONNEES = reponse;
+  DONNEES.crypto = {};
+  DONNEES.dechiffre = null;
+  DONNEES.attaque = null;
+  if (!MOTS_FR.size) {
+    fetch("/api/dictionnaire").then(r => r.json()).then(d => { (d.mots || []).forEach(m => MOTS_FR.add(cleMot(m))); });
+  }
+  $("sec-attaque").hidden = true;
+  vueCible = "cesar";
+  $("vide").hidden = true;
+  $("contenu").hidden = false;
+  const distincts = Object.keys(reponse.digrammes).length;
+  statut(nombre(reponse.stats.global_count) + " caracteres \u00b7 " + distincts + " digrammes distincts \u00b7 cryptogramme dans la carte voulue.");
+  dessinerMatrice();
+  dessinerFrequences();
+  dessinerDigrammes();
+  resume();
+  afficherVue("genere");
+  rafraichirBoutons();
+}
+
+$("lancer-fichier").onclick = analyserFichier;
 
 function noteCesar(saisie, decalage){
   return saisie !== decalage ? " (cle " + saisie + " hors 0-25, utilisee " + decalage + " par modulo 26)" : "";
