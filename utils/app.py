@@ -14,6 +14,7 @@ import threading
 import urllib.error
 import urllib.parse
 import urllib.request
+import unicodedata
 import webbrowser
 from pathlib import Path
 
@@ -123,10 +124,20 @@ def text_generator(matrix, longueur=1000):
 ETAT: dict = {"matrix": None, "content": None, "crypto": {}}
 
 DICT_PATH = Path(__file__).resolve().parent.parent / "mcmc" / "dictionnaire_fr.txt"
+
+
+def _normaliser_mot_dico(mot: str) -> str:
+    """Normalise un mot de dictionnaire en A-Z (accents/ligatures retires)."""
+    mot = mot.strip().upper().replace("Œ", "OE").replace("Æ", "AE")
+    mot = unicodedata.normalize("NFD", mot)
+    mot = "".join(c for c in mot if unicodedata.category(c) != "Mn")
+    return "".join(c for c in mot if "A" <= c <= "Z")
+
+
 MOTS_FR = set()
 if DICT_PATH.exists():
-    for ligne in DICT_PATH.read_text(encoding="utf-8").splitlines():
-        mot = ligne.strip().upper()
+    for ligne in DICT_PATH.read_text(encoding="utf-8", errors="replace").splitlines():
+        mot = _normaliser_mot_dico(ligne)
         if mot:
             MOTS_FR.add(mot)
 
@@ -778,7 +789,7 @@ async function analyser(){
   DONNEES.dechiffre = null;
   DONNEES.attaque = null;
   if (!MOTS_FR.size) {
-    fetch("/api/dictionnaire").then(r => r.json()).then(d => { (d.mots || []).forEach(m => MOTS_FR.add(m)); });
+    fetch("/api/dictionnaire").then(r => r.json()).then(d => { (d.mots || []).forEach(m => MOTS_FR.add(cleMot(m))); });
   }
   $("sec-attaque").hidden = true;
   vueCible = "cesar";
@@ -937,6 +948,15 @@ function dessinerDigrammes(){
 $("freq-plus").onclick = () => { PLIAGE.freq = !PLIAGE.freq; dessinerFrequences(); };
 $("dig-plus").onclick = () => { PLIAGE.dig = !PLIAGE.dig; dessinerDigrammes(); };
 
+function cleMot(tok){
+  return tok.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase()
+    .replace(/Œ/g, "OE").replace(/Æ/g, "AE").replace(/[^A-Z]/g, "");
+}
+
+function echappeHtml(s){
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 function afficherCorpus(){
   const texte = vueActive === "genere" ? DONNEES.genere
     : vueActive === "crypto" ? (DONNEES.crypto[vueCible] || "(Aucun cryptogramme genere.)")
@@ -946,9 +966,10 @@ function afficherCorpus(){
   if (vueActive === "dechiffre" && DONNEES.dechiffre) {
     $("corpus").innerHTML = DONNEES.dechiffre.split(/(\\s+)/).map(tok => {
       if (/^\\s+$/.test(tok)) return tok;
-      const mot = tok.replace(/[^A-Z]/g, "");
-      if (mot && MOTS_FR.size && !MOTS_FR.has(mot)) return '<span class="mot-inconnu">' + tok + '</span>';
-      return tok;
+      const mot = cleMot(tok);
+      const html = echappeHtml(tok);
+      if (mot && MOTS_FR.size && !MOTS_FR.has(mot)) return '<span class="mot-inconnu">' + html + '</span>';
+      return html;
     }).join("");
   } else {
     $("corpus").textContent = texte;
