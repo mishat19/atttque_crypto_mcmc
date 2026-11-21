@@ -32,7 +32,17 @@ from substitution.cryptogramme import scores_attaque_frequentielle
 
 WIKI_UA = "MonScript/1.0 (simon@example.com)"
 SATES = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U",
-         "V", "W", "X", "Y", "Z", "Ã€", "Ã‚", "Ã„", "Ã‰", "Ãˆ", "ÃŠ", "Ã‹", "ÃŽ", "Ã", "Ã”", "Ã–", "Ã™", "Ã›", "Ãœ", "Ã‡", " "]
+         "V", "W", "X", "Y", "Z", "À", "Â", "Ä", "É", "È", "Ê", "Ë", "Î", "Ï", "Ô", "Ö", "Ù", "Û", "Ü", "Ç", " "]
+
+_LIGATURES = (("œ", "oe"), ("Œ", "OE"), ("æ", "ae"), ("Æ", "AE"))
+
+
+def _deplier_ligatures(texte: str) -> str:
+    """Replie les ligatures francaises (œ, æ) en deux lettres pour ne perdre aucun caractere."""
+    for ligature, double in _LIGATURES:
+        texte = texte.replace(ligature, double)
+    return texte
+
 
 PORT = 8765
 
@@ -56,7 +66,7 @@ def wiki_text(titre, lang="fr", intro_seule=False):
     page = next(iter(payload["query"]["pages"].values()))
 
     # convert page content to a 27 character string, replacing newlines with spaces and letters in uppercase only
-    content = page.get("extract", "").replace("\n", " ").upper()
+    content = _deplier_ligatures(page.get("extract", "")).replace("\n", " ").upper()
     content = ''.join(c for c in content if c in SATES)
 
     if len(content) % 2 == 1:
@@ -116,8 +126,8 @@ def text_generator(matrix, longueur=1000):
 
     return text
 
-# Les textes gÃ©nÃ©rÃ©es n'ont pas de sens particulier puisque toutes les lettres sont mÃ©langÃ©es. Les mots ne sont plus de la mÃªme taille mais
-# le texte reste cohÃ©rent en terme de structure Ã  un texte normal.
+# Les textes générées n'ont pas de sens particulier puisque toutes les lettres sont mélangées. Les mots ne sont plus de la même taille mais
+# le texte reste cohérent en terme de structure à un texte normal.
 
 # =============== SERVEUR ==============
 
@@ -128,7 +138,7 @@ DICT_PATH = Path(__file__).resolve().parent.parent / "mcmc" / "dictionnaire_fr.t
 
 def _normaliser_mot_dico(mot: str) -> str:
     """Normalise un mot de dictionnaire en A-Z (accents/ligatures retires)."""
-    mot = mot.strip().upper().replace("Å’", "OE").replace("Ã†", "AE")
+    mot = mot.strip().upper().replace("Œ", "OE").replace("Æ", "AE")
     mot = unicodedata.normalize("NFD", mot)
     mot = "".join(c for c in mot if unicodedata.category(c) != "Mn")
     return "".join(c for c in mot if "A" <= c <= "Z")
@@ -143,7 +153,7 @@ if DICT_PATH.exists():
 
 
 def nettoyer_texte(raw: str) -> str:
-    content = raw.replace("\n", " ").upper()
+    content = _deplier_ligatures(raw).replace("\n", " ").upper()
     content = "".join(c for c in content if c in SATES)
     if len(content) % 2 == 1:
         content += " "
@@ -306,7 +316,7 @@ def dechiffre_candidat(cible: str, decalages: list, periode: int | None = None) 
     """Dechiffre le cryptogramme avec une cle candidate (un decalage par colonne).
 
     Les decalages non specifies utilisent le meilleur decalage de la derniere
-    attaque. Permet d'afficher le texte attaquÃ© meme quand ce n'est pas le meilleur.
+    attaque. Permet d'afficher le texte attaqué meme quand ce n'est pas le meilleur.
     """
     decalages = [int(d) % 26 for d in decalages]
 
@@ -1000,7 +1010,7 @@ $("dig-plus").onclick = () => { PLIAGE.dig = !PLIAGE.dig; dessinerDigrammes(); }
 
 function cleMot(tok){
   return tok.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase()
-    .replace(/Å’/g, "OE").replace(/Ã†/g, "AE").replace(/[^A-Z]/g, "");
+    .replace(/Œ/g, "OE").replace(/Æ/g, "AE").replace(/[^A-Z]/g, "");
 }
 
 function echappeHtml(s){
