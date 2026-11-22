@@ -1,0 +1,545 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Projet MCMC &amp; cryptographie — documentation</title>
+<style>
+  :root{
+    --ground:#FBFAF7; --ink:#23211E; --mute:#6E6A62; --rule:#E3DED3;
+    --accent:#2F6F4F; --accent-2:#A8492C; --panel:#F3F0E9; --code:#211F1C;
+    --sans:"Segoe UI",system-ui,-apple-system,sans-serif;
+    --mono:"Consolas","Courier New",monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);
+       font-size:16px;line-height:1.65;-webkit-font-smoothing:antialiased}
+  a{color:var(--accent)}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 28px 100px}
+  header{padding:72px 0 34px;border-bottom:1px solid var(--rule)}
+  header .kicker{font-family:var(--mono);font-size:12px;letter-spacing:.14em;
+       text-transform:uppercase;color:var(--accent);margin:0 0 14px}
+  h1{font-size:38px;line-height:1.15;margin:0 0 14px;letter-spacing:-.02em}
+  header p.lead{font-size:18px;color:var(--mute);max-width:70ch;margin:0}
+  nav{margin:26px 0 0;display:flex;gap:8px;flex-wrap:wrap}
+  nav a{text-decoration:none;font-size:13.5px;padding:6px 12px;border:1px solid var(--rule);
+        border-radius:3px;color:var(--ink);background:#fff}
+  nav a:hover{border-color:var(--accent);color:var(--accent)}
+  section{padding-top:58px}
+  h2{font-size:24px;margin:0 0 6px;letter-spacing:-.01em}
+  h2 .num{font-family:var(--mono);font-size:13px;color:var(--accent);
+          display:block;margin-bottom:8px;letter-spacing:.1em}
+  h3{font-size:17px;margin:32px 0 8px}
+  h4{font-size:14px;margin:22px 0 6px;text-transform:uppercase;letter-spacing:.07em;color:var(--mute)}
+  p{margin:10px 0}
+  .intro{font-size:17px;color:var(--mute);max-width:78ch}
+  code{font-family:var(--mono);font-size:.9em;background:var(--panel);
+       padding:2px 5px;border-radius:3px;word-break:break-word}
+  pre{background:var(--code);color:#EDE8DE;border-radius:5px;padding:18px 20px;
+      overflow-x:auto;font-family:var(--mono);font-size:13px;line-height:1.55;margin:16px 0}
+  pre .c{color:#9CBFA9}
+  pre .p{color:#E9B98F}
+  .cards{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:24px 0}
+  .card{border:1px solid var(--rule);background:#fff;border-radius:5px;padding:20px 22px}
+  .card h3{margin:0 0 8px}
+  .card .tag{display:inline-block;font-family:var(--mono);font-size:11px;
+       text-transform:uppercase;letter-spacing:.08em;color:var(--accent);margin-bottom:10px}
+  .card.web .tag{color:var(--accent-2)}
+  .card ul{margin:10px 0 0;padding-left:20px}
+  .flow{border:1px solid var(--rule);border-radius:5px;background:#fff;
+        padding:24px;margin:22px 0;font-family:var(--mono);font-size:13px;
+        line-height:1.9;overflow-x:auto;white-space:pre}
+  .flow b{color:var(--accent)}
+  table{border-collapse:collapse;width:100%;margin:20px 0;font-size:14.5px;background:#fff}
+  th,td{border:1px solid var(--rule);padding:10px 12px;text-align:left;vertical-align:top}
+  th{background:var(--panel);font-weight:600;font-size:13px}
+  td code{font-size:12.5px}
+  .note{border-left:3px solid var(--accent);background:#F1F6F2;padding:14px 18px;
+        margin:20px 0;border-radius:0 4px 4px 0}
+  .note.warn{border-color:var(--accent-2);background:#FBF1ED}
+  .note strong{display:block;margin-bottom:4px}
+  ol.steps{padding-left:22px}
+  ol.steps li{margin:8px 0}
+  .filetree{font-family:var(--mono);font-size:13px;line-height:1.7;background:var(--panel);
+            border-radius:5px;padding:18px 20px;overflow-x:auto}
+  .small{font-size:13.5px;color:var(--mute)}
+  footer{margin-top:80px;padding-top:24px;border-top:1px solid var(--rule);
+         font-size:13px;color:var(--mute)}
+  @media(max-width:800px){
+    .cards{grid-template-columns:1fr}
+    h1{font-size:30px}
+    .wrap{padding:0 18px 70px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <p class="kicker">BUT 3 — projet de cryptographie</p>
+  <h1>Attaques cryptographiques&nbsp;: moteur MCMC et interface web</h1>
+  <p class="lead">Ce dépôt contient <strong>deux systèmes distincts</strong> qui étudient les
+  chiffrements classiques en français&nbsp;: un moteur <strong>terminal</strong> fondé sur une
+  chaîne de Markov Monte Carlo (MCMC), et une <strong>interface graphique locale</strong>
+  dans le navigateur. Les deux partagent la bibliothèque de chiffrements, mais
+  <strong>ne communiquent pas entre eux à l'exécution</strong>.</p>
+  <nav>
+    <a href="#architecture">1. Architecture</a>
+    <a href="#terminal">2. Système terminal</a>
+    <a href="#web">3. Système graphique</a>
+    <a href="#lien">4. Lien entre les deux</a>
+    <a href="#comparaison">5. Comparaison</a>
+    <a href="#demarrage">6. Démarrage</a>
+    <a href="#fichiers">7. Fichiers</a>
+    <a href="#theorie">8. Théorie</a>
+  </nav>
+</header>
+
+<section id="architecture">
+  <h2><span class="num">01 / VUE D'ENSEMBLE</span>Architecture générale</h2>
+  <p class="intro">L'application n'est pas un seul programme avec deux modes d'affichage&nbsp;:
+  ce sont <strong>deux points d'entrée indépendants</strong> (<code>mcmc/main.py</code> et
+  <code>utils/app.py</code>) posés sur une couche commune de modules de chiffrement.</p>
+
+  <div class="flow"><b>[ TERMINAL ]</b>                         <b>[ NAVIGATEUR ]</b>
+  mcmc/main.py  (CLI + moteur MCMC)          utils/app.py  (serveur HTTP + HTML/JS intégré)
+       │                                            │
+       ├── mcmc/utils/{score,mutation,              ├── analyse Markov d'un article Wikipédia
+       │     selection,initialisation,substitution} │    (matrix 42×42, fréquences, digrammes)
+       │                                            │
+       └──────────────┐                    ┌────────┘
+                      ▼                    ▼
+        <b>COUCHE PARTAGÉE</b>  chiffrements/  permutation/  substitution/
+             (César, Vigenère, attaque fréquentielle, permutation par blocs)
+                      │                    │
+                      └────────┬───────────┘
+                               ▼
+              mcmc/dictionnaire_fr.txt  (utilisé par le WEB uniquement)
+              mcmc/reference.txt        (utilisé par le TERMINAL uniquement)</div>
+
+  <div class="note">
+    <strong>Point clé à retenir</strong>
+    Les deux systèmes se partagent le <em>code source</em> (les imports Python),
+    pas un <em>état d'exécution</em>. Il n'y a ni socket entre eux, ni fichier
+    de session commun écrit par l'un et lu par l'autre, ni API appelée par le CLI
+    vers le serveur web.
+  </div>
+
+  <h3>Deux objectifs différents</h3>
+  <div class="cards">
+    <div class="card">
+      <span class="tag">Terminal / MCMC</span>
+      <h3>Retrouver une clé inconnue</h3>
+      <p>On part d'un cryptogramme dont on ignore la clé. On échantillonne
+      l'espace des clés avec une chaîne MCMC et on affiche les meilleures
+      propositions. L'être humain lit les textes et choisit le bon.</p>
+      <ul>
+        <li>Substitution des 26 lettres (26! clés)</li>
+        <li>Permutation de positions de longueur ℓ (ℓ! clés)</li>
+        <li>Score de crédibilité basé sur les bigrammes de <code>reference.txt</code></li>
+      </ul>
+    </div>
+    <div class="card web">
+      <span class="tag">Navigateur / interface web</span>
+      <h3>Explorer et comprendre les chiffres</h3>
+      <p>On analyse un texte, on visualise la matrice de Markov, puis on
+      chiffre, déchiffre avec une clé connue et attaque avec la méthode
+      fréquentielle classique. L'accent est mis sur la pédagogie et la
+      visualisation.</p>
+      <ul>
+        <li>Analyse Wikipédia ou fichier .txt local</li>
+        <li>3 cartes&nbsp;: César, Vigenère, Permutation</li>
+        <li>Attaque fréquentielle par colonnes + surlignage des mots inconnus</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="terminal">
+  <h2><span class="num">02 / SYSTÈME TERMINAL</span>Le moteur MCMC</h2>
+  <p class="intro">Tout se joue dans <code>mcmc/main.py</code>&nbsp;: un seul moteur,
+  deux "facettes" (lettres ou positions) fournies par injection des fonctions
+  <code>dechiffrer</code>, <code>muter</code> et <code>formater</code>.</p>
+
+  <h3>Les deux modes</h3>
+  <table>
+    <tr><th>Mode</th><th>Espace des clés</th><th>Mutation proposée</th><th>Fichier chiffré</th></tr>
+    <tr>
+      <td><code>--mode lettres</code><br><span class="small">partie 1.3 du sujet</span></td>
+      <td>Permutation des 26 lettres<br><span class="small">26! ≈ 4·10<sup>26</sup> clés</span></td>
+      <td>Échange de deux lettres au hasard (<code>muter_lettres</code>)</td>
+      <td><code>mcmc/chiffre.txt</code></td>
+    </tr>
+    <tr>
+      <td><code>--mode positions</code><br><span class="small">partie 1.4 du sujet</span></td>
+      <td>Permutation de <code>0..ℓ-1</code><br><span class="small">ℓ! clés, ℓ testé de 2 à 8</span></td>
+      <td>Déplacement d'un sous-bloc <code>(i, L, d)</code> (<code>muter_positions</code>)</td>
+      <td><code>mcmc/chiffre_positions.txt</code></td>
+    </tr>
+  </table>
+
+  <h3>Déroulé d'une attaque</h3>
+  <ol class="steps">
+    <li><strong>Apprendre la langue</strong>&nbsp;: <code>lire_texte(reference.txt)</code>
+      normalise le corpus (accents retirés, espace conservé comme 27<sup>e</sup> symbole),
+      puis <code>construire_log_r</code> compte les bigrammes et stocke
+      <code>log(1 + nb_occurrence)</code>.</li>
+    <li><strong>Choisir un départ</strong>&nbsp;: <code>cle_aleatoire()</code> ou
+      <code>cle_heuristique()</code> (la lettre chiffrée la plus fréquente est
+      associée à <code>E</code>, etc.).</li>
+    <li><strong>Lancer la chaîne</strong>&nbsp;: <code>marche_mcmc()</code> propose une
+      mutation, calcule <code>log S</code> avec un cache, applique la règle de
+      Metropolis (<code>accepter_log</code>), puis comptabilise les visites
+      après la période de chauffe.</li>
+    <li><strong>Agréger</strong>&nbsp;: <code>fusionner_etats</code> /
+      <code>fusionner_candidats</code> regroupent les redémarrages ;
+      <code>fusionner_vue</code> réunit visites et propositions.</li>
+    <li><strong>Classer et afficher</strong>&nbsp;: <code>classer</code> garde les
+      <em>n</em> meilleures clés (par score ou par visites) et
+      <code>afficher_propositions</code> montre les 100 premiers caractères
+      déchiffrés. C'est à l'utilisateur de juger quel texte est lisible.</li>
+  </ol>
+
+  <h3>Commandes</h3>
+  <pre><span class="c"># 1) Fabriquer un cryptogramme de test (on connaît la clé)</span>
+<span class="p">python3 mcmc/chiffrer.py</span> --mode lettres --graine 1
+<span class="p">python3 mcmc/chiffrer.py</span> --mode positions --longueur-cle 4 --longueur 3000 --graine 1
+
+<span class="c"># 2) Attaquer le cryptogramme</span>
+<span class="p">python3 mcmc/main.py</span> --mode lettres
+<span class="p">python3 mcmc/main.py</span> --mode positions --longueur-max 8 --redemarrages 3
+
+<span class="c"># 3) Vérifier les briques unitaires</span>
+<span class="p">python3 mcmc/tests/test_mcmc.py</span></pre>
+
+  <h3>Options principales de <code>mcmc/main.py</code></h3>
+  <table>
+    <tr><th>Option</th><th>Défaut</th><th>Rôle</th></tr>
+    <tr><td><code>--iterations</code></td><td>20 000</td><td>Nombre de propositions de clés par chaîne</td></tr>
+    <tr><td><code>--chauffe</code></td><td>0.10</td><td>Fraction des itérations ignorée avant de comptabiliser les visites</td></tr>
+    <tr><td><code>--propositions</code></td><td>5</td><td>Nombre de candidats affichés</td></tr>
+    <tr><td><code>--initialisation</code></td><td>heuristique</td><td><code>heuristique</code> (fréquences) ou <code>aleatoire</code></td></tr>
+    <tr><td><code>--longueur-min/max</code></td><td>2 / 8</td><td>Intervalle de ℓ exploré en mode positions</td></tr>
+    <tr><td><code>--redemarrages</code></td><td>1</td><td>Nombre de chaînes indépendantes fusionnées par longueur</td></tr>
+    <tr><td><code>--classement</code></td><td>score</td><td><code>score</code> (log S) ou <code>visites</code> (temps passé)</td></tr>
+    <tr><td><code>--graine</code></td><td>—</td><td>Rend l'attaque reproductible</td></tr>
+    <tr><td><code>--reference</code>, <code>--chiffre</code></td><td>fichiers de <code>mcmc/</code></td><td>Permet de changer de corpus ou de cryptogramme</td></tr>
+  </table>
+
+  <div class="note warn">
+    <strong>Lecture du résumé "positions"</strong>
+    Le tableau final affiche <code>log S − log(ℓ!)</code>&nbsp;: c'est une
+    pénalité de complexité. Un ℓ plus grand explore plus de clés et peut
+    coller aux bigrammes par hasard. On choisit ensuite <em>la plus petite
+    longueur ℓ dont le texte est lisible</em>, pas forcément celle au score
+    brut le plus élevé.
+  </div>
+
+  <h3>Les utilitaires du moteur</h3>
+  <table>
+    <tr><th>Fichier</th><th>Responsabilité</th></tr>
+    <tr><td><code>mcmc/utils/score.py</code></td><td>Normalisation, comptage des bigrammes, calcul de <code>log S</code></td></tr>
+    <tr><td><code>mcmc/utils/mutation.py</code></td><td>Échange de lettres, déplacement de bloc (propositions symétriques)</td></tr>
+    <tr><td><code>mcmc/utils/selection.py</code></td><td>Règle d'acceptation de Metropolis en logarithmique</td></tr>
+    <tr><td><code>mcmc/utils/initialisation.py</code></td><td>Clés aléatoires et clé heuristique par fréquences</td></tr>
+    <tr><td><code>mcmc/utils/substitution.py</code></td><td>Chiffrement/déchiffrement d'une substitution de 26 lettres</td></tr>
+  </table>
+</section>
+
+<section id="web">
+  <h2><span class="num">03 / SYSTÈME GRAPHIQUE</span>L'interface web locale</h2>
+  <p class="intro">Tout tient dans <code>utils/app.py</code> (environ 1 300 lignes)&nbsp;:
+  un serveur Python standard, une page HTML/CSS/JavaScript intégrée dans une
+  chaîne <code>PAGE</code>, et zéro dépendance externe.</p>
+
+  <h3>Comment ça démarre</h3>
+  <pre><span class="p">python utils/app.py</span>
+<span class="c"># Interface disponible sur http://127.0.0.1:8765/  (Ctrl+C pour arrêter)</span></pre>
+  <p><code>main()</code> crée un <code>ThreadingHTTPServer</code> lié à
+  <code>127.0.0.1:8765</code>, planifie un <code>webbrowser.open</code> après
+  0,6 s, puis <code>serve_forever()</code>. Le serveur n'écoute que la machine
+  locale&nbsp;: aucun risque d'exposition réseau.</p>
+
+  <h3>Le cycle d'une requête</h3>
+  <ol class="steps">
+    <li>Le navigateur charge <code>/</code>&nbsp;: le serveur renvoie directement
+      la chaîne <code>PAGE</code> (HTML + CSS + JS embarqués).</li>
+    <li>L'utilisateur choisit un article Wikipédia (ou un .txt) et clique sur
+      <em>Analyser</em>. Le JS appelle <code>/api/analyse</code> (GET) ou
+      <code>/api/analyse-texte</code> (POST).</li>
+    <li>Le serveur filtre le texte sur 42 symboles, calcule les fréquences,
+      les digrammes et la matrice de Markov, puis les stocke dans <code>ETAT</code>
+      et renvoie le tout en JSON.</li>
+    <li>Le JS dessine la matrice (42×42 cases colorées), les histogrammes et
+      génère un texte aléatoire via <code>/api/generer</code>.</li>
+    <li>Dans chaque carte, l'utilisateur suit l'ordre <strong>1 Cryptogramme →
+      2 Décrypter → 3 Attaque</strong>. Les boutons 2 et 3 restent désactivés
+      tant que l'étape 1 n'a pas produit de cryptogramme.</li>
+  </ol>
+
+  <h3>Les trois cartes de chiffrement</h3>
+  <table>
+    <tr><th>Carte</th><th>Clé</th><th>Chiffrement</th><th>Attaque proposée</th></tr>
+    <tr>
+      <td><strong>César</strong></td><td>Un entier 0–25</td>
+      <td>Décalage fixe de toutes les lettres</td>
+      <td>Corrélation des fréquences avec le français, 26 scores classés</td>
+    </tr>
+    <tr>
+      <td><strong>Vigenère</strong></td><td>Un mot (ex. <code>ORACLE</code>)</td>
+      <td>Un décalage par lettre, clé répétée ; la clé avance sur les lettres uniquement</td>
+      <td>Découpage en <em>L</em> colonnes (une César par colonne), score par décalage</td>
+    </tr>
+    <tr>
+      <td><strong>Permutation</strong></td><td>Un mot (ex. <code>LEMON</code>)</td>
+      <td>Vigenère <em>positionnel</em> (espaces compris) puis permutation par blocs</td>
+      <td>Mêmes décalages par colonne + recherche de l'ordre des colonnes par score de bigrammes (<em>L!</em> essais, si le texte ≥ 200 caractères)</td>
+    </tr>
+  </table>
+
+  <h3>Les routes HTTP</h3>
+  <table>
+    <tr><th>Méthode</th><th>Route</th><th>Action</th></tr>
+    <tr><td>GET</td><td><code>/</code></td><td>Sert la page complète</td></tr>
+    <tr><td>GET</td><td><code>/api/analyse</code></td><td>Télécharge et analyse un article Wikipédia</td></tr>
+    <tr><td>POST</td><td><code>/api/analyse-texte</code></td><td>Analyse le contenu d'un fichier .txt importé</td></tr>
+    <tr><td>GET</td><td><code>/api/generer</code></td><td>Génère un texte selon la matrice courante</td></tr>
+    <tr><td>GET</td><td><code>/api/cesar</code></td><td>Chiffre ou déchiffre avec un décalage</td></tr>
+    <tr><td>GET</td><td><code>/api/vigenere</code></td><td>Chiffre ou déchiffre avec un mot-clé</td></tr>
+    <tr><td>GET</td><td><code>/api/permutation</code></td><td>Chiffre ou déchiffre avec Vigenère + permutation</td></tr>
+    <tr><td>GET</td><td><code>/api/attaque</code></td><td>Attaque fréquentielle de César</td></tr>
+    <tr><td>GET</td><td><code>/api/attaque-vigenere</code></td><td>Attaque par colonnes de Vigenère</td></tr>
+    <tr><td>GET</td><td><code>/api/attaque-permutation</code></td><td>Attaque par colonnes de la permutation</td></tr>
+    <tr><td>GET</td><td><code>/api/dechiffre-candidat</code></td><td>Déchiffre avec un candidat choisi par clic</td></tr>
+    <tr><td>GET</td><td><code>/api/dictionnaire</code></td><td>Renvoie la liste des mots français connus</td></tr>
+  </table>
+  <p class="small">Toute exception côté serveur est convertie par
+  <code>Handler._sur()</code> en <code>{"erreur": "..."}</code> et affichée en
+  rouge dans la barre d'état&nbsp;: le serveur ne plante donc pas sur une mauvaise saisie.</p>
+
+  <div class="note">
+    <strong>Astuce interface</strong>
+    Les étoiles (★) marquent le décalage jugé le plus probable pour chaque
+    colonne. Cliquer sur une autre ligne du classement garde les meilleurs
+    décalages ailleurs et remplace uniquement la colonne choisie&nbsp;: on peut
+    ainsi réparer une erreur de l'attaque fréquentielle à la main. Les mots
+    absents du dictionnaire sont surlignés en jaune dans l'onglet "Déchiffre".
+  </div>
+
+  <h3>Et <code>utils/stats.py</code> ?</h3>
+  <p>C'est l'<strong>ancêtre terminal</strong> de l'analyse Markov&nbsp;: mêmes
+  calculs (fréquences, digrammes, matrice, génération) mais affichage ASCII
+  dans le terminal, article Wikipédia codé en dur (<em>Paris</em>) et
+  dépendance externe <code>requests</code>. Le bloc de démonstration s'exécute
+  dès le lancement. L'interface web en est la version aboutie&nbsp;: <code>urllib</code>
+  à la place de <code>requests</code>, article configurable et visualisation.</p>
+</section>
+
+<section id="lien">
+  <h2><span class="num">04 / LIEN ENTRE LES DEUX SYSTÈMES</span>Ce qui est partagé, ce qui ne l'est pas</h2>
+
+  <div class="cards">
+    <div class="card">
+      <span class="tag">Partagé (code)</span>
+      <h3>Imports Python</h3>
+      <p><code>utils/app.py</code> importe directement&nbsp;:</p>
+      <ul>
+        <li><code>chiffrements.chiffrement_cesar</code> (César)</li>
+        <li><code>chiffrements.chiffrement_vigenere</code> (Vigenère)</li>
+        <li><code>chiffrements.attaque_frequentielle</code> (attaque par colonnes)</li>
+        <li><code>permutation.cryptogramme</code> (Vigenère + permutation)</li>
+        <li><code>substitution.cryptogramme</code> (scores César)</li>
+      </ul>
+      <p><code>mcmc/main.py</code> importe <code>permutation.bloc</code> et
+      <code>mcmc/utils/*</code>. Les deux ajoutent la racine du dépôt à
+      <code>sys.path</code> pour que ces imports fonctionnent sans installation.</p>
+    </div>
+    <div class="card web">
+      <span class="tag">Partagé (données)</span>
+      <h3>Fichiers du dossier mcmc/</h3>
+      <ul>
+        <li><code>dictionnaire_fr.txt</code>&nbsp;: lu par le <em>web</em> pour le
+          surlignage des mots inconnus.</li>
+        <li><code>clair.txt</code>&nbsp;: texte source utilisé par le
+          <em>générateur de cryptogrammes</em> du terminal.</li>
+        <li><code>reference.txt</code>&nbsp;: corpus de référence du
+          <em>score MCMC</em> uniquement (le web utilise sa propre table de
+          fréquences et de bigrammes).</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>Ce qui n'est PAS partagé</h3>
+  <table>
+    <tr><th></th><th>Terminal MCMC</th><th>Interface web</th></tr>
+    <tr><td>Processus</td><td>Un script Python qui se termine</td><td>Un serveur HTTP persistant</td></tr>
+    <tr><td>État</td><td>Variables locales dans <code>marche_mcmc</code></td><td>Dictionnaire global <code>ETAT</code> côté serveur + <code>DONNEES</code> côté navigateur</td></tr>
+    <tr><td>Attaque</td><td>Probabiliste (Metropolis–Hastings)</td><td>Déterministe (fréquences + bigrammes)</td></tr>
+    <tr><td>Modèle de langue</td><td>Bigrammes lissés de <code>reference.txt</code> (27 symboles)</td><td>Matrice de transition 42×42 apprise à la volée</td></tr>
+    <tr><td>Permutation</td><td><code>permutation/bloc.py</code> (permutation pure)</td><td><code>permutation/cryptogramme.py</code> (Vigenère + permutation)</td></tr>
+    <tr><td>Communication</td><td colspan="2" style="text-align:center"><strong>Aucune.</strong> Ni IPC, ni fichier de session, ni appel HTTP croisé.</td></tr>
+  </table>
+
+  <div class="note warn">
+    <strong>Conséquence pratique</strong>
+    Un cryptogramme généré dans l'interface web n'est pas attaquable
+    directement par <code>mcmc/main.py</code> (il faudrait l'enregistrer dans
+    <code>mcmc/chiffre.txt</code> et utiliser le bon alphabet). Inversement,
+    <code>mcmc/chiffre.txt</code> n'est pas lu par le serveur web. Les deux
+    systèmes sont <em>complémentaires</em>, pas connectés.
+  </div>
+</section>
+
+<section id="comparaison">
+  <h2><span class="num">05 / COMPARAISON RAPIDE</span>Quand utiliser lequel ?</h2>
+  <table>
+    <tr><th>Besoin</th><th>Système à utiliser</th><th>Pourquoi</th></tr>
+    <tr><td>Comprendre visuellement ce qu'est une matrice de transition</td><td>Interface web</td><td>Grille 42×42 interactive et courbes de fréquences</td></tr>
+    <tr><td>Chiffrer un texte avec César / Vigenère et voir le résultat</td><td>Interface web</td><td>3 cartes avec boutons 1/2/3 et textes en regard</td></tr>
+    <tr><td>Observer l'échec d'une attaque fréquentielle quand le texte est court</td><td>Interface web</td><td>Classement complet des candidats + clic sur un non-meilleur</td></tr>
+    <tr><td>Casser une substitution de 26 lettres sur un long texte</td><td>Terminal MCMC</td><td>26! clés&nbsp;: seule l'exploration probabiliste est envisageable</td></tr>
+    <tr><td> retrouver la longueur ℓ d'une permutation de positions</td><td>Terminal MCMC</td><td>Boucle sur ℓ = 2..8 avec pénalité <code>log(ℓ!)</code></td></tr>
+    <tr><td>Travailler sans navigateur / sur un serveur distant</td><td>Terminal MCMC</td><td>Aucun serveur HTTP, uniquement la stdlib Python</td></tr>
+    <tr><td>Valider le calcul de <code>log S</code> ou la réversibilité des mutations</td><td>Tests unitaires</td><td><code>python3 mcmc/tests/test_mcmc.py</code></td></tr>
+  </table>
+</section>
+
+<section id="demarrage">
+  <h2><span class="num">06 / DÉMARRAGE</span>Installation et commandes</h2>
+  <h3>Prérequis</h3>
+  <ul>
+    <li>Python <strong>3.10 minimum</strong> (annotations <code>int | None</code>, <code>tuple[int, ...]</code> utilisées dans le code).</li>
+    <li><strong>Aucune dépendance</strong> pour <code>utils/app.py</code> et pour le MCMC&nbsp;: uniquement la bibliothèque standard.</li>
+    <li>Seul <code>utils/stats.py</code> nécessite <code>requests</code>&nbsp;: <code>pip install requests</code>.</li>
+    <li>Connexion Internet pour analyser un article Wikipédia (inutile pour un .txt local).</li>
+    <li>Les fichiers texte de <code>mcmc/</code> doivent rester en place (<code>reference.txt</code> ~478 Ko, <code>dictionnaire_fr.txt</code> ~3,6 Mo).</li>
+  </ul>
+
+  <h3>Depuis la racine du dépôt</h3>
+  <pre><span class="c"># Interface graphique</span>
+python utils/app.py
+
+<span class="c"># Attaque MCMC — substitution de lettres</span>
+python3 mcmc/main.py --mode lettres --graine 1
+
+<span class="c"># Attaque MCMC — permutation de positions</span>
+python3 mcmc/main.py --mode positions --longueur-max 8
+
+<span class="c"># Génération d'un cryptogramme de test, puis attaque</span>
+python3 mcmc/chiffrer.py --mode lettres --graine 1
+python3 mcmc/main.py --mode lettres --initialisation aleatoire
+
+<span class="c"># Tests unitaires</span>
+python3 mcmc/tests/test_mcmc.py
+
+<span class="c"># Auto-démonstration de la permutation du sujet (BONJOUR -&gt; OJNBURO)</span>
+python permutation/bloc.py
+
+<span class="c"># Ancienne démo terminal de la chaîne de Markov (nécessite requests)</span>
+python utils/stats.py</pre>
+
+  <div class="note">
+    <strong>Si un fichier est introuvable</strong>
+    Le CLI affiche un message invitant à lancer <code>mcmc/chiffrer.py</code>
+    pour créer <code>chiffre.txt</code> ou <code>chiffre_positions.txt</code>.
+    Les chemins par défaut sont toujours relatifs au dossier du script, pas
+    au répertoire courant.
+  </div>
+</section>
+
+<section id="fichiers">
+  <h2><span class="num">07 / PLAN DES FICHIERS</span></h2>
+  <div class="filetree">.
+├── <b>mcmc/</b>                     ← système terminal (CLI + moteur MCMC)
+│   ├── main.py                  point d'entrée, chaîne MCMC, CLI, affichage
+│   ├── chiffrer.py              génère les cryptogrammes de test
+│   ├── reference.txt           corpus français → statistiques de bigrammes
+│   ├── clair.txt               texte clair source du générateur
+│   ├── chiffre.txt             cryptogramme de substitution (sortie)
+│   ├── chiffre_positions.txt   cryptogramme de permutation (sortie)
+│   ├── dictionnaire_fr.txt     mots français (réutilisé par l'interface web)
+│   ├── schema.txt              organigramme Mermaid de l'algorithme MCMC
+│   ├── utils/
+│   │   ├── score.py            log S, bigrammes, normalisation
+│   │   ├── mutation.py         échange de lettres / déplacement de bloc
+│   │   ├── selection.py        acceptation de Metropolis
+│   │   ├── initialisation.py   clé aléatoire ou heuristique
+│   │   └── substitution.py     substitution monoalphabétique
+│   └── tests/test_mcmc.py      tests unittest (stdlib)
+├── <b>utils/</b>                    ← système graphique
+│   ├── app.py                  serveur HTTP + page HTML/CSS/JS intégrée
+│   └── stats.py                version terminal historique de l'analyse Markov
+├── <b>chiffrements/</b>             ← bibliothèque partagée
+│   ├── chiffrement_cesar.py
+│   ├── chiffrement_vigenere.py
+│   └── attaque_frequentielle.py
+├── <b>permutation/</b>              ← bibliothèque partagée
+│   ├── bloc.py                 permutation de positions pure
+│   └── cryptogramme.py         Vigenère positionnel + permutation
+├── <b>substitution/</b>
+│   └── cryptogramme.py         César + attaque fréquentielle
+├── oral.txt, rendu.txt          notes de restitution
+└── <b>README.html</b>               ← ce document</div>
+</section>
+
+<section id="theorie">
+  <h2><span class="num">08 / RAPPELS THÉORIQUES</span>Pourquoi ça marche</h2>
+
+  <h3>Le score de crédibilité</h3>
+  <p>Le moteur terminal maximise&nbsp;:</p>
+  <pre>S(k) = ∏<sub>(x,y)</sub> r(x,y)<sup>1 + f<sub>k</sub>(x,y)</sup>
+
+r(x,y) = 1 + nombre de bigrammes xy dans reference.txt
+f<sub>k</sub>(x,y) = nombre de bigrammes xy dans le texte déchiffré par k
+
+log S(k) = Σ (1 + f<sub>k</sub>(x,y)) · log r(x,y)</pre>
+  <p>Avec un a priori uniforme sur les clés, la loi a posteriori est
+  proportionnelle à <code>S(k)</code>&nbsp;: les clés produisant un texte
+  proche du français sont les plus crédibles. Le passage au logarithme évite
+  les produits gigantesques.</p>
+
+  <h3>La règle de Metropolis</h3>
+  <p>On accepte toujours une clé de score supérieur&nbsp;; une clé moins bonne
+  est acceptée avec probabilité&nbsp;:</p>
+  <pre>P(accepter k → k') = min(1, S(k') / S(k))
+                   ⇔ log U &lt; log S(k') − log S(k),  U ~ Uniforme(0,1)</pre>
+  <p>Les mutations sont <strong>symétriques</strong>&nbsp;: échanger <code>i</code>
+  et <code>j</code> est réversible, et <code>(i, L, d)</code> est annulé par
+  <code>(d, L, i)</code>. La chaîne est <strong>irréductible</strong> (toutes les
+  clés sont atteignables) et <strong>apériodique</strong> (un refus ou un
+  déplacement <code>i == d</code> permet de rester sur place). Elle converge donc
+  vers <code>π(k) ∝ S(k)</code>&nbsp;: les bonnes clés sont visitées le plus
+  souvent, d'où l'intérêt du critère <code>--classement visites</code>.</p>
+
+  <h3>Pourquoi l'attaque fréquentielle suffit dans le navigateur</h3>
+  <p>Pour César, il n'existe que 26 clés&nbsp;: on les teste toutes. Pour
+  Vigenère, chaque colonne est un César indépendant&nbsp;: <em>L</em>×26 tests
+  suffisent. Pour la permutation combinée, les décalages sont retrouvés de la
+  même manière, mais il reste <em>L!</em> ordres possibles&nbsp;: c'est là que
+  le score de bigrammes et, côté terminal, le MCMC prennent le relais.</p>
+
+  <h3>Limites connues</h3>
+  <ul>
+    <li>La chaîne de Markov du navigateur n'est pas irréductible sur ses 42
+      états&nbsp;: certains symboles n'ont aucune transition sortante. La loi
+      stationnaire ne porte que sur la classe récurrente (voir la note dans
+      <code>utils/stats.py</code>).</li>
+    <li>L'attaque fréquentielle par colonnes devient incertaine sur un texte
+      trop court&nbsp;: c'est pourquoi le réordonnancement par bigrammes de
+      l'interface web exige au moins 200 caractères.</li>
+    <li>Le serveur web garde un seul document actif dans <code>ETAT</code>&nbsp;:
+      ouvrir plusieurs onglets analysant des textes différents se écraserait mutuellement.</li>
+    <li>Le score MCMC dépend fortement de la qualité et de la longueur du
+      corpus de référence&nbsp;: <code>reference.txt</code> est fourni à cet effet.</li>
+  </ul>
+</section>
+
+<footer>
+  Documentation générée pour le projet <code>atttque_crypto_mcmc</code> —
+  fichier autonome, sans dépendance ni ressource externe. Ouvrez-le simplement
+  dans un navigateur.
+</footer>
+
+</div>
+</body>
+</html>

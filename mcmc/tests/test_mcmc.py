@@ -13,6 +13,8 @@ import unittest
 from pathlib import Path
 
 RACINE = Path(__file__).resolve().parents[2]
+# Le fichier de test est dans mcmc/tests/ : on remonte de deux niveaux pour
+# atteindre la racine, puis on ajoute mcmc/ pour importer "main" et "utils.*".
 sys.path.insert(0, str(RACINE))
 sys.path.insert(0, str(RACINE / "mcmc"))
 
@@ -49,11 +51,15 @@ from main import marche_mcmc
 
 
 class TestPermutationBloc(unittest.TestCase):
+    """Vérifie l'exemple du sujet et la réversibilité des permutations."""
+
     def test_exemple_du_sujet(self):
         self.assertEqual(chiffrer_positions("BONJOUR", "3021"), "OJNBURO")
         self.assertEqual(dechiffrer_positions("OJNBURO", "3021"), "BONJOUR")
 
     def test_cle_et_inverse(self):
+        # p = (3,0,2,1) : p[0]=3, p[1]=0, p[2]=2, p[3]=1.
+        # L'inverse vérifie inv[p[i]] = i, donc inv = (1,3,2,0).
         cle = (3, 0, 2, 1)
         self.assertEqual(cle_inverse_positions(cle), (1, 3, 2, 0))
         self.assertEqual(cle_inverse_positions(cle_inverse_positions(cle)), cle)
@@ -89,6 +95,8 @@ class TestPermutationBloc(unittest.TestCase):
 
 
 class TestMutationPositions(unittest.TestCase):
+    """Vérifie que les mutations restent dans l'espace des permutations."""
+
     def test_mutation_conserve_permutation(self):
         for longueur in range(2, 9):
             cle = tuple(range(longueur))
@@ -115,6 +123,8 @@ class TestMutationPositions(unittest.TestCase):
 
 
 class TestSubstitutionLettres(unittest.TestCase):
+    """Vérifie la substitution monoalphabétique des 26 lettres."""
+
     def test_chiffrement_dechiffrement(self):
         cle_chiffrement = LETTRES[1:] + LETTRES[0]
         cle_dechiffrement = cle_inverse_lettres(cle_chiffrement)
@@ -133,6 +143,8 @@ class TestSubstitutionLettres(unittest.TestCase):
 
 
 class TestScore(unittest.TestCase):
+    """Contrôle la formule log(S) = log(∏ S) et la lecture des cryptogrammes."""
+
     def test_log_egale_log_du_produit(self):
         reference = "BONJOUR LE MONDE"
         texte = "BONJOUR"
@@ -157,6 +169,8 @@ class TestScore(unittest.TestCase):
 
 
 class TestPermutationCombinee(unittest.TestCase):
+    """Vérifie le chiffrement combiné Vigenère + permutation de l'interface web."""
+
     def test_aller_retour(self):
         message = "UN TEXTE ASSEZ LONG POUR TESTER LA PERMUTATION DES POSITIONS"
         cle = definir_cle_combinee("LEMON")
@@ -165,9 +179,13 @@ class TestPermutationCombinee(unittest.TestCase):
 
 
 class TestMoteurMCMC(unittest.TestCase):
+    """Vérifie la comptabilité de la chaîne (états visités vs clés proposées)."""
+
     def test_enregistre_visites_et_candidats(self):
         """Avec deux états de même score, la chaîne alterne et tout est compté."""
 
+        # Déchiffrement factice : les deux clés donnent le même texte, donc
+        # le même score. La chaîne alterne entre 0 et 1 (100 - 10 = 90 visites).
         def dechiffrer_factice(texte, cle):
             return texte
 

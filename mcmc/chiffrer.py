@@ -16,6 +16,8 @@ from pathlib import Path
 
 DOSSIER = Path(__file__).resolve().parent
 RACINE = DOSSIER.parent
+# Même technique que dans main.py : rendre visibles les modules des autres
+# dossiers sans installer le projet comme paquet Python.
 sys.path.insert(0, str(RACINE))
 sys.path.insert(0, str(DOSSIER))
 
@@ -42,6 +44,7 @@ CHEMIN_SORTIE_POSITIONS = DOSSIER / "chiffre_positions.txt"
 
 
 def construire_parseur():
+    """Options du générateur de cryptogrammes de test."""
     parser = argparse.ArgumentParser(
         description="Chiffre un texte clair pour préparer un test MCMC."
     )
@@ -74,6 +77,11 @@ def construire_parseur():
 
 
 def main(argv=None):
+    """Chiffre un extrait de clair.txt et écrit le cryptogramme sur disque.
+
+    Le but est de disposer d'un cryptogramme dont on connaît la clé : on peut
+    ainsi vérifier que l'attaque MCMC retrouve bien la bonne réponse.
+    """
     parser = construire_parseur()
     args = parser.parse_args(argv)
 
@@ -99,6 +107,8 @@ def main(argv=None):
         if longueur < 1:
             parser.error("--longueur doit être au moins 1.")
 
+    # On ne garde que la longueur demandée : les statistiques de bigrammes
+    # ont besoin d'assez de texte (d'où 1500 lettres / 3000 positions).
     clair = clair[:longueur]
     sortie = args.sortie
     if sortie is None:
@@ -109,6 +119,7 @@ def main(argv=None):
         )
 
     if args.mode == "positions":
+        # Mode 1.4 : clé de permutation ℓ, tirée au hasard ou imposée.
         if args.cle is None:
             cle_chiffrement = cle_aleatoire_positions(args.longueur_cle)
         else:
@@ -122,6 +133,7 @@ def main(argv=None):
                 f"attendue {args.longueur_cle}."
             )
 
+        # On affiche les deux clés : l'attaque cherche la clé de déchiffrement.
         cle_dechiffrement = cle_inverse_positions(cle_chiffrement)
         chiffre = chiffrer_positions(clair, cle_chiffrement)
 
@@ -129,6 +141,7 @@ def main(argv=None):
         print(f"Clé de chiffrement : {formater_positions(cle_chiffrement)}")
         print(f"Clé de déchiffrement : {formater_positions(cle_dechiffrement)}")
     else:
+        # Mode 1.3 : substitution des 26 lettres, clé = permutation de A-Z.
         if args.cle is None:
             cle_chiffrement = cle_aleatoire()
         else:
@@ -145,6 +158,8 @@ def main(argv=None):
         print(f"Clé de chiffrement   : {cle_chiffrement}")
         print(f"Clé de déchiffrement : {cle_dechiffrement}")
 
+    # Écriture brute : contrairement à reference.txt, ce fichier n'est pas
+    # normalisé (les espaces/y positionnements doivent être conservés).
     with open(sortie, "w", encoding="utf-8") as fichier:
         fichier.write(chiffre)
 

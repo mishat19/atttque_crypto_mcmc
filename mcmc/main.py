@@ -26,6 +26,8 @@ from pathlib import Path
 
 DOSSIER = Path(__file__).resolve().parent
 RACINE = DOSSIER.parent
+# La racine donne accès aux paquets partagés (permutation/, substitution/...),
+# DOSSIER donne accès aux utilitaires locaux (utils/score.py, utils/mutation.py...).
 sys.path.insert(0, str(RACINE))
 sys.path.insert(0, str(DOSSIER))
 
@@ -56,11 +58,12 @@ CHEMIN_REFERENCE = DOSSIER / "reference.txt"
 CHEMIN_CHIFFRE_LETTRES = DOSSIER / "chiffre.txt"
 CHEMIN_CHIFFRE_POSITIONS = DOSSIER / "chiffre_positions.txt"
 
-N_DEFAUT_ITERATIONS = 20_000
-N_DEFAUT_PROPOSITIONS = 5
-CHAUFFE_DEFAUT = 0.10
-LONGUEUR_MIN_DEFAUT = 2
-LONGUEUR_MAX_DEFAUT = 8
+# Valeurs par défaut de la ligne de commande.
+N_DEFAUT_ITERATIONS = 20_000       # nombre d'états proposés par chaîne
+N_DEFAUT_PROPOSITIONS = 5          # nombre de clés affichées à l'utilisateur
+CHAUFFE_DEFAUT = 0.10              # 10 % des itérations sont ignorées (convergence)
+LONGUEUR_MIN_DEFAUT = 2            # plus petite longueur de bloc de permutation
+LONGUEUR_MAX_DEFAUT = 8            # plus grande (8! = 40 320 clés)
 
 
 # =============== MOTEUR MCMC ===============
@@ -74,14 +77,22 @@ def marche_mcmc(texte_chiffre, cle_initiale, log_r, dechiffrer, muter,
     if n_iterations <= chauffe:
         raise ValueError("Il faut au moins une itération après la période de chauffe.")
 
+    # Départ : on évalue la clé initiale une seule fois et on la met en cache.
     cle = cle_initiale
     score = calculer_score_log(texte_chiffre, cle, log_r, dechiffrer)
     cache = {cle: score}
+    # `etats` ne compte que les clés occupées APRÈS la chauffe : c'est
+    # l'échantillon qui estime la loi stationnaire π(k) ∝ S(k).
     etats: dict = {}
+    # `candidats` garde toutes les clés PROPOSÉES, même refusées : une clé très
+    # mauvaise peut avoir été proposée souvent sans jamais être visitée.
     candidats: dict = {}
 
     for iteration in range(n_iterations):
+        # 1. Proposer une clé voisine (mutation symétrique).
         candidate = muter(cle)
+        # 2. Évaluer son log-score. Le cache évite de re-déchiffrer tout le
+        #    texte quand on retombe sur une clé déjà vue (fréquent en position).
         if candidate in cache:
             score_candidat = cache[candidate]
         else:
@@ -90,6 +101,7 @@ def marche_mcmc(texte_chiffre, cle_initiale, log_r, dechiffrer, muter,
             )
             cache[candidate] = score_candidat
 
+        # 3. Comptabiliser la proposition, acceptée ou non.
         info_candidat = candidats.get(candidate)
         if info_candidat is None:
             candidats[candidate] = {"score": score_candidat, "propositions": 1}
@@ -97,9 +109,12 @@ def marche_mcmc(texte_chiffre, cle_initiale, log_r, dechiffrer, muter,
             info_candidat["propositions"] += 1
             info_candidat["score"] = max(info_candidat["score"], score_candidat)
 
+        # 4. Accepter ou refuser avec la règle de Metropolis.
         if accepter_log(score, score_candidat):
             cle, score = candidate, score_candidat
 
+        # 5. Après la chauffe, noter la clé courante (qu'elle soit nouvelle ou
+        #    identique à la précédente suite à un refus) : c'est l'échantillon.
         if iteration >= chauffe:
             info = etats.get(cle)
             if info is None:
@@ -117,7 +132,11 @@ def marche_mcmc(texte_chiffre, cle_initiale, log_r, dechiffrer, muter,
 
 
 def fusionner_etats(destination, source):
-    """Fusionne les résultats de plusieurs redémarrages pour une même longueur."""
+    """Fusionne les résultats de plusieurs redémarrages pour une même longueur.
+
+    Les visites s'additionnent (plus on a d'échantillons, meilleure est
+    l'estimation) tandis que le score conserve le maximum observé.
+    """
     for cle, info in source.items():
         if cle in destination:
             destination[cle]["visites"] += info["visites"]
@@ -127,7 +146,11 @@ def fusionner_etats(destination, source):
 
 
 def fusionner_candidats(destination, source):
-    """Fusionne les candidats évalués par plusieurs redémarrages."""
+    """Fusionne les candidats évalués par plusieurs redémarrages.
+
+    Même logique que ``fusionner_etats``, mais sur les propositions : le
+    nombre de propositions s'additionne.
+    """
     for cle, info in source.items():
         if cle in destination:
             destination[cle]["propositions"] += info["propositions"]
@@ -137,7 +160,12 @@ def fusionner_candidats(destination, source):
 
 
 def fusionner_vue(etats, candidats):
-    """Réunit visites et propositions dans une même table pour le classement."""
+    """Réunit visites et propositions dans une même table pour le classement.
+
+    On part des candidats (ensemble le plus large) puis on injecte les visites
+    des états. Le classement affiche ainsi, pour chaque clé, son score, son
+    nombre de visites et son nombre de propositions.
+    """
     vue = {
         cle: {
             "score": info["score"],
@@ -160,7 +188,12 @@ def fusionner_vue(etats, candidats):
 
 
 def classer(etats, n, critere="score"):
-    """Les n meilleurs états, par score ou par nombre de visites."""
+    """Les n meilleurs états, par score ou par nombre de visites.
+
+    Le critère "score" met en avant les textes les plus francophones ;
+    "visites" met en avant les clés où la chaîne a passé le plus de temps,
+    c'est-à-dire les modes de la loi stationnaire (souvent les mêmes clés).
+    """
     if critere == "visites":
         return sorted(
             etats.items(),
@@ -179,6 +212,9 @@ def afficher_propositions(propositions, chiffre, dechiffrer, inverse, formater,
     """Affiche une petite famille de clés candidates et le texte associé."""
     if titre:
         print(titre)
+    # Pour chaque clé on montre son score, sa fréquence de visite et les
+    # 100 premiers caractères déchiffrés : c'est l'humain qui décide laquelle
+    # est réellement lisible, le score n'étant qu'une approximation.
     for numero, (cle, info) in enumerate(propositions, start=1):
         propositions_recues = info.get("propositions", 0)
         print(
@@ -187,12 +223,15 @@ def afficher_propositions(propositions, chiffre, dechiffrer, inverse, formater,
             f"proposée = {propositions_recues})"
         )
         print(f"  clé         : {formater(cle)}")
+        # La clé affichée est celle explorée par le MCMC (clé de déchiffrement) ;
+        # l'inverse est la clé qu'aurait utilisée le chiffrement.
         print(f"  clé inverse : {formater(inverse(cle))}")
         print(f"  texte       : {dechiffrer(chiffre, cle)[:100]}")
         print()
 
 
 def verifier_entrees(reference, chiffre):
+    """Refuse un corpus de référence ou un cryptogramme vide."""
     if not reference:
         raise ValueError("Le texte de référence est vide.")
     if not chiffre:
@@ -206,12 +245,15 @@ def attaque_lettres(args):
     chiffre = lire_chiffre(args.chiffre)
     verifier_entrees(reference, chiffre)
 
+    # 1. Apprendre les bigrammes du français depuis reference.txt.
     log_r = construire_log_r(reference)
+    # 2. Choisir le point de départ (aléatoire ou attaque fréquentielle naïve).
     if args.initialisation == "aleatoire":
         cle_initiale = cle_aleatoire()
     else:
         cle_initiale = cle_heuristique(chiffre, reference)
 
+    # 3. La chauffe est une fraction du nombre total d'itérations.
     chauffe = int(args.iterations * args.chauffe)
     score_initial = calculer_score_log(
         chiffre, cle_initiale, log_r, dechiffrer_lettres
@@ -224,6 +266,7 @@ def attaque_lettres(args):
     print(f"Clé initiale   : {cle_initiale} (log S = {score_initial:.1f})")
     print()
 
+    # 4. Lancer la chaîne avec les fonctions propres au mode lettres.
     etats, candidats = marche_mcmc(
         chiffre,
         cle_initiale,
@@ -233,6 +276,7 @@ def attaque_lettres(args):
         args.iterations,
         chauffe,
     )
+    # 5. Classer et afficher les meilleures clés.
     vue = fusionner_vue(etats, candidats)
     propositions = classer(vue, args.propositions, args.classement)
     afficher_propositions(
@@ -269,9 +313,13 @@ def attaque_positions(args):
 
     resultats = []
 
+    # La longueur ℓ du bloc est inconnue : on lance une famille de chaînes
+    # indépendantes pour chaque valeur, puis on compare les résultats.
     for longueur in range(args.longueur_min, args.longueur_max + 1):
         etats: dict = {}
         candidats: dict = {}
+        # Plusieurs départs aléatoires évitent de rester bloqué dans un
+        # maximum local propre à une seule chaîne.
         for _ in range(args.redemarrages):
             cle_initiale = cle_aleatoire_positions(longueur)
             etats_marche, candidats_marche = marche_mcmc(
@@ -286,11 +334,14 @@ def attaque_positions(args):
             fusionner_etats(etats, etats_marche)
             fusionner_candidats(candidats, candidats_marche)
 
+        # On pool les redémarrages avant de classer, comme une seule grande chaîne.
         vue = fusionner_vue(etats, candidats)
         propositions = classer(vue, args.propositions, args.classement)
         resultats.append((longueur, propositions))
 
         meilleur_score = propositions[0][1]["score"]
+        # pénalité de complexité : log(ℓ!) = lgamma(ℓ + 1). Sans elle, un ℓ
+        # plus grand explore plus de clés et peut "sur-apprendre" le bruit.
         penalise = meilleur_score - math.lgamma(longueur + 1)
         afficher_propositions(
             propositions,
@@ -310,6 +361,8 @@ def attaque_positions(args):
             )
             print()
 
+    # Tableau comparatif : la pénalité permet de départager des longueurs
+    # différentes, la lisibilité du texte reste le critère final.
     print("=== Résumé ===")
     print(f"{'ℓ':>3}  {'meilleur log S':>15}  {'log S - log(ℓ!)':>18}  clé")
     for longueur, propositions in resultats:
@@ -327,6 +380,7 @@ def attaque_positions(args):
 # =============== CLI ===============
 
 def construire_parseur():
+    """Décrit toutes les options de la ligne de commande (voir --help)."""
     parser = argparse.ArgumentParser(
         description="Attaque MCMC d'un chiffrement par substitution ou permutation."
     )
@@ -376,9 +430,12 @@ def construire_parseur():
 
 
 def main(argv=None):
+    """Point d'entrée : validation des options, graines aléatoires, dispatch."""
     parser = construire_parseur()
     args = parser.parse_args(argv)
 
+    # Les contrôles sont faits ici (et non dans les fonctions d'attaque)
+    # pour produire des messages d'erreur argparse clairs.
     if args.iterations < 1:
         parser.error("--iterations doit être au moins 1.")
     if not 0 <= args.chauffe < 1:
@@ -386,6 +443,7 @@ def main(argv=None):
     if args.propositions < 1:
         parser.error("--propositions doit être au moins 1.")
 
+    # Le cryptogramme par défaut dépend du mode (deux fichiers différents).
     if args.chiffre is None:
         args.chiffre = (
             CHEMIN_CHIFFRE_POSITIONS
@@ -401,10 +459,12 @@ def main(argv=None):
         if args.redemarrages < 1:
             parser.error("--redemarrages doit être au moins 1.")
 
+    # Une graine fixe rend l'attaque reproductible (utile pour les tests).
     if args.graine is not None:
         random.seed(args.graine)
 
     try:
+        # Un seul moteur, deux façons de déchiffrer / muter / formater la clé.
         if args.mode == "positions":
             attaque_positions(args)
         else:

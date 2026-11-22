@@ -18,6 +18,8 @@ import unicodedata
 import webbrowser
 from pathlib import Path
 
+# La racine du dépôt est ajoutée au chemin d'import : c'est ce qui permet
+# de réutiliser les chiffrements écrits pour le terminal sans les dupliquer.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from chiffrements.attaque_frequentielle import attaque_frequentielle_colonnes, _unmixer, _indices
@@ -30,7 +32,9 @@ from permutation.cryptogramme import (
 )
 from substitution.cryptogramme import scores_attaque_frequentielle
 
+# Identifiant envoyé à l'API Wikipédia (User-Agent obligatoire).
 WIKI_UA = "MonScript/1.0 (simon@example.com)"
+# Les 42 états de la chaîne de Markov : lettres, lettres accentuées, espace.
 SATES = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U",
          "V", "W", "X", "Y", "Z", "À", "Â", "Ä", "É", "È", "Ê", "Ë", "Î", "Ï", "Ô", "Ö", "Ù", "Û", "Ü", "Ç", " "]
 
@@ -44,9 +48,12 @@ def _deplier_ligatures(texte: str) -> str:
     return texte
 
 
-PORT = 8765
+PORT = 8765  # port local : http://127.0.0.1:8765/
+
 
 def wiki_text(titre, lang="fr", intro_seule=False):
+    # Paramètres de l'API MediaWiki : on demande le texte brut (explaintext)
+    # de l'article, avec résolution des redirections.
     params = {
         "action": "query",
         "prop": "extracts",
@@ -63,12 +70,14 @@ def wiki_text(titre, lang="fr", intro_seule=False):
     with urllib.request.urlopen(requete, timeout=10) as reponse:
         payload = json.loads(reponse.read().decode("utf-8"))
 
+    # L'API renvoie un dictionnaire de pages : on prend la première valeur.
     page = next(iter(payload["query"]["pages"].values()))
 
     # convert page content to a 27 character string, replacing newlines with spaces and letters in uppercase only
     content = _deplier_ligatures(page.get("extract", "")).replace("\n", " ").upper()
     content = ''.join(c for c in content if c in SATES)
 
+    # Longueur paire obligatoire pour le découpage en digrammes par paires.
     if len(content) % 2 == 1:
         content += " "
 
@@ -76,6 +85,7 @@ def wiki_text(titre, lang="fr", intro_seule=False):
 
 
 def statistics(content):
+    """Histogramme des caractères : total et effectif par symbole de SATES."""
     stats = {
         "global_count": len(content),
         "character_count": {char: content.count(char) for char in SATES},
@@ -84,29 +94,40 @@ def statistics(content):
 
 
 def digram_stats(content, largeur=2):
+    """Dénombre les paires de caractères consécutives : {'LE': 123, ...}."""
     content_length = len(content)
     diagram_stats = {}
 
     for index in range(0, content_length, largeur):
         segment = content[index:index + largeur]
+        # Équivalent à diagram_stats[segment] = get(segment, 0) + 1.
         diagram_stats[segment] = diagram_stats[segment] + 1 if segment in diagram_stats else 1
 
     return diagram_stats
 
 
 def markov_matrix(digram_stats):
+    """Matrice P(suivant | courant) de taille 42×42, normalisée par ligne.
+
+    matrix[x][y] = nombre de fois où SATES[y] suit SATES[x], divisé par le
+    nombre total de transitions depuis SATES[x]. C'est une chaîne de Markov
+    d'ordre 1 : seul le symbole précédent influence le suivant.
+    """
     matrix = []
 
+    # Matrice de comptage initialisée à zéro.
     for x in range(len(SATES)):
         matrix.append([])
         for y in range(len(SATES)):
             matrix[x].append(0)
 
+    # Chaque digramme "AB" incrémente la case (A, B).
     for segment in digram_stats:
         x = SATES.index(segment[0])
         y = SATES.index(segment[1])
         matrix[x][y] += digram_stats[segment]
 
+    # Normalisation : chaque ligne devient une loi de probabilité (somme 1).
     for x in range(len(SATES)):
         ligne_total = sum(matrix[x])
         for y in range(len(SATES)):
@@ -116,6 +137,11 @@ def markov_matrix(digram_stats):
 
 
 def text_generator(matrix, longueur=1000):
+    """Tire un texte aléatoire en suivant les probabilités de la matrice.
+
+    À chaque étape, on regarde la ligne correspondant au symbole courant et
+    on tire le suivant au hasard avec ``random.choices(weights=...)``.
+    """
     text = " "
     current_char = " "
     for _ in range(longueur):
@@ -131,8 +157,13 @@ def text_generator(matrix, longueur=1000):
 
 # =============== SERVEUR ==============
 
+# État global partagé par toutes les requêtes : matrice apprise, texte source
+# et dernier cryptogramme produit pour chaque chiffrement.
+# Attention : un seul "document" actif à la fois pour tous les onglets.
 ETAT: dict = {"matrix": None, "content": None, "crypto": {}}
 
+# Le dictionnaire français du dossier MCMC est réutilisé ici pour surligner
+# les mots inconnus dans les textes déchiffrés.
 DICT_PATH = Path(__file__).resolve().parent.parent / "mcmc" / "dictionnaire_fr.txt"
 
 
@@ -144,6 +175,8 @@ def _normaliser_mot_dico(mot: str) -> str:
     return "".join(c for c in mot if "A" <= c <= "Z")
 
 
+# Chargement unique au démarrage (3,6 Mo) dans un set : les tests d'appartenance
+# sont alors en O(1) côté serveur, et le set est envoyé au navigateur via /api/dictionnaire.
 MOTS_FR = set()
 if DICT_PATH.exists():
     for ligne in DICT_PATH.read_text(encoding="utf-8", errors="replace").splitlines():
@@ -153,6 +186,7 @@ if DICT_PATH.exists():
 
 
 def nettoyer_texte(raw: str) -> str:
+    """Applique le même filtre que wiki_text à un fichier .txt importé."""
     content = _deplier_ligatures(raw).replace("\n", " ").upper()
     content = "".join(c for c in content if c in SATES)
     if len(content) % 2 == 1:
@@ -161,12 +195,15 @@ def nettoyer_texte(raw: str) -> str:
 
 
 def analyser_texte(texte: str, titre: str = "Fichier") -> dict:
+    """Analyse un fichier importé : mêmes calculs que ``analyser`` (Wikipedia)."""
     content = nettoyer_texte(texte)
     if not content:
         return {"erreur": "Aucun texte exploitable dans le fichier."}
 
     digrammes = digram_stats(content)
     matrix = markov_matrix(digrammes)
+    # On remplace l'état précédent : les cryptogrammes des analyses précédentes
+    # ne sont plus valables.
     ETAT["matrix"] = matrix
     ETAT["content"] = content
     ETAT["crypto"] = {}
@@ -190,6 +227,8 @@ def analyser(titre: str, lang: str, intro_seule: bool) -> dict:
 
     digrammes = digram_stats(content)
     matrix = markov_matrix(digrammes)
+    # On remplace l'état précédent : les cryptogrammes des analyses précédentes
+    # ne sont plus valables.
     ETAT["matrix"] = matrix
     ETAT["content"] = content
     ETAT["crypto"] = {}
@@ -225,7 +264,11 @@ def _cle(mot_cle: str) -> str:
 
 
 def _source() -> str:
-    """Texte de l'article analyse, source de tous les cryptogrammes."""
+    """Texte de l'article analyse, source de tous les cryptogrammes.
+
+    C'est le point de jonction entre l'analyse Markov et la partie crypto :
+    les trois cartes chiffrent toujours ce même texte normalisé.
+    """
     if not ETAT["content"]:
         raise ValueError("Analysez d'abord un article.")
     return ETAT["content"]
@@ -241,12 +284,15 @@ def _cryptogramme(cible: str) -> str:
 
 def cryptogrammer(decalage: int, mode: str = "chiffre") -> dict:
     """Chiffre ou dechiffre le dernier texte avec le chiffrement de Cesar."""
+    # Un décalage hors 0..25 est ramené dans l'intervalle par modulo.
     cle = decalage % 26
 
     if mode == "dechiffre":
         return {"texte": dechiffre_cesar(_cryptogramme("cesar"), cle), "decalage": cle}
 
     crypto = chiffre_cesar(_source(), cle)
+    # Mémorisation pour que "Déchiffrer" et "Attaque" travaillent sur le
+    # même cryptogramme, sans le renvoyer à chaque fois au navigateur.
     ETAT["crypto"]["cesar"] = crypto
     return {"cryptogramme": crypto, "decalage": cle}
 
@@ -264,7 +310,11 @@ def crypter_vigenere(mot_cle: str, mode: str = "chiffre") -> dict:
 
 
 def crypter_permutation(mot_cle: str, mode: str = "chiffre") -> dict:
-    """Chiffre ou dechiffre avec la permutation de position pilotee par la cle."""
+    """Chiffre ou dechiffre avec la permutation de position pilotee par la cle.
+
+    Le mot clé sert à la fois de décalages Vigenère et (via l'ordre
+    alphabétique de ses lettres) de permutation des positions.
+    """
     cle = cle_permutation(_cle(mot_cle))
 
     if mode == "dechiffre":
@@ -276,7 +326,11 @@ def crypter_permutation(mot_cle: str, mode: str = "chiffre") -> dict:
 
 
 def attaquer() -> dict:
-    """Attaque frequentielle du dernier cryptogramme genere."""
+    """Attaque frequentielle du dernier cryptogramme genere.
+
+    Ici il n'y a que 26 clés : on calcule les 26 scores et on affiche
+    le classement complet à l'utilisateur.
+    """
     crypto = _cryptogramme("cesar")
     scores = scores_attaque_frequentielle(crypto)
     meilleur = max(scores, key=scores.get)
@@ -296,6 +350,8 @@ def _attaquer_colonnes(cible: str, flux: str, periode: int) -> dict:
     `flux` dit sur quoi la cle se repete : sur les lettres pour le Vigenere
     habituel, sur les positions brutes pour la permutation, qui les reordonne.
     """
+    # Délégation totale à la bibliothèque partagée : la différence entre
+    # Vigenère et permutation tient uniquement au paramètre `flux`.
     resultat = attaque_frequentielle_colonnes(_cryptogramme(cible), periode, flux)
     resultat["mode"] = "colonnes"
     resultat["cible"] = cible
@@ -318,6 +374,8 @@ def dechiffre_candidat(cible: str, decalages: list, periode: int | None = None) 
     Les decalages non specifies utilisent le meilleur decalage de la derniere
     attaque. Permet d'afficher le texte attaqué meme quand ce n'est pas le meilleur.
     """
+    # Les décalages transmis par l'URL sont des chaînes : on les convertit
+    # et on les ramène dans 0..25.
     decalages = [int(d) % 26 for d in decalages]
 
     if cible == "cesar":
@@ -360,12 +418,18 @@ def dechiffre_candidat(cible: str, decalages: list, periode: int | None = None) 
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
-    """Sert la page et les points d'entree JSON."""
+    """Sert la page et les points d'entree JSON.
+
+    Le navigateur ne contient aucune logique crypto : il appelle ces routes
+    en HTTP, le serveur lit/écrit ``ETAT`` et renvoie du JSON.
+    """
 
     def do_GET(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
         query = urllib.parse.parse_qs(parsed.query)
 
+        # La page HTML/CSS/JS est envoyée en un seul bloc : pas de fichiers
+        # statiques à déployer.
         if parsed.path == "/":
             self._repondre(200, "text/html; charset=utf-8", PAGE.encode("utf-8"))
             return
@@ -430,6 +494,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self._repondre(404, "text/plain; charset=utf-8", b"Page inconnue")
 
     def do_POST(self) -> None:
+        # Le seul POST sert à envoyer le contenu d'un fichier .txt importé
+        # (trop volumineux pour une query string GET).
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path == "/api/analyse-texte":
             length = int(self.headers.get("Content-Length", 0))
@@ -461,6 +527,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return {"erreur": str(erreur)}
 
     def _json(self, charge: dict) -> None:
+        """Sérialise un dictionnaire Python en réponse JSON UTF-8."""
         self._repondre(200, "application/json; charset=utf-8", json.dumps(charge).encode("utf-8"))
 
     def _repondre(self, code: int, type_mime: str, corps: bytes) -> None:
@@ -743,8 +810,11 @@ h2{font-size:16px;font-weight:600;margin:0 0 3px}
 </div>
 
 <script>
+// RAMPE : palette de 9 couleurs, une par tranche de probabilite (0 -> 1).
 const RAMPE = ["#F4F1E8","#E4E7DC","#CBD9CB","#ADC8B7","#8AB49F","#659E85","#43876C","#276F55","#14563F"];
 const $ = (id) => document.getElementById(id);
+// DONNEES = tout ce que le serveur a renvoye pour l'analyse courante.
+// vueActive = onglet de texte affiche ; vueCible = chiffre selectionne.
 let DONNEES = null, CASES = [], vueActive = "genere", vueCible = "cesar";
 let MOTS_FR = new Set();
 
@@ -754,12 +824,14 @@ function nombre(n){ return n.toLocaleString("fr-FR"); }
 function nom(c){ return c === " " ? "espace" : c; }
 function symbole(c){ return c === " " ? "\\u2423" : c; }
 
+// Message affiche dans la barre de controle (en rouge en cas d'erreur).
 function statut(message, rouge){
   const e = $("etat");
   e.textContent = message;
   e.classList.toggle("rouge", !!rouge);
 }
 
+// Change d'onglet de texte sans rien recalculer cote serveur.
 function afficherVue(quelle){
   vueActive = quelle;
   document.querySelectorAll(".bascule").forEach(a => a.setAttribute("aria-selected", a.dataset.vue === quelle));
@@ -769,6 +841,8 @@ function afficherVue(quelle){
 // Boutons en cours d'appel : rafraichirBoutons doit les laisser grilles.
 const EN_COURS = new Set();
 
+// unique point d'appel fetch() : gere les erreurs reseau et desactive le
+// bouton pendant la requete pour eviter les doubles clics.
 async function charger(url, bouton){
   if (bouton) EN_COURS.add(bouton.id);
   try {
@@ -791,6 +865,8 @@ const CIFRAS = {
 
 function suffixe(cible){ return cible === "cesar" ? "" : "-" + cible; }
 
+// Les boutons "2 Decrypter" et "3 Attaque" restent grises tant que la
+// carte n'a pas produit son cryptogramme : l'ordre 1/2/3 est impose.
 function rafraichirBoutons(){
   const pret = !!DONNEES;
   const actif = (id, pret2) => { $(id).disabled = !pret2 || EN_COURS.has(id); };
@@ -832,6 +908,7 @@ function lierCle(idCle, idPeriode){
 lierCle("cle-vigenere", "periode-vigenere");
 lierCle("cle-permutation", "periode-permutation");
 
+// Etape 0 : telecharger un article via /api/analyse puis dessiner la matrice.
 async function analyser(){
   const titre = $("titre").value.trim();
   if (!titre) { statut("Indiquez un titre d'article.", true); return; }
@@ -865,6 +942,8 @@ async function analyser(){
   rafraichirBoutons();
 }
 
+// Construit les 42x42 cases HTML. Chaque case memorise sa position (x,y)
+// pour afficher sa probabilite au survol via lire().
 function dessinerMatrice(){
   const { matrix, etats } = DONNEES;
   const grille = $("grille");
@@ -929,6 +1008,8 @@ function nettoyer(){
   document.querySelectorAll(".colactif").forEach(e => e.classList.remove("colactif"));
 }
 
+// Survole d'une case : affiche P(vers | de) et le nombre d'occurrences du
+// digramme dans le texte analyse.
 function lire(x, y){
   nettoyer();
   const { matrix, etats, digrammes, stats } = DONNEES;
@@ -1017,6 +1098,8 @@ function echappeHtml(s){
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+// Affiche le texte correspondant a l'onglet actif. En mode "dechiffre",
+// les mots absents du dictionnaire francais sont surlignes en jaune.
 function afficherCorpus(){
   const texte = vueActive === "genere" ? DONNEES.genere
     : vueActive === "crypto" ? (DONNEES.crypto[vueCible] || "(Aucun cryptogramme genere.)")
@@ -1037,6 +1120,9 @@ function afficherCorpus(){
   $("reglage").style.visibility = vueActive === "genere" ? "visible" : "hidden";
 }
 
+// Affiche le top 5 des candidats. Une etoile (★) marque le meilleur
+// decalage de chaque colonne ; cliquer une ligne permet de choisir un
+// autre candidat que le meilleur.
 function dessinerAttaque(){
   const attaque = DONNEES.attaque;
   const liste = $("attaque-list");
@@ -1093,6 +1179,9 @@ function dessinerAttaque(){
   });
 }
 
+// Clic sur un candidat : on garde les meilleurs decalages pour les autres
+// colonnes et on remplace seulement la colonne cliquee, puis on demande
+// /api/dechiffre-candidat au serveur.
 $("attaque-list").onclick = async (ev) => {
   const rang = ev.target.closest(".rang.att");
   if (!rang || !rang.dataset.cle) return;
@@ -1135,6 +1224,8 @@ $("regenerer").onclick = async () => {
 $("lancer").onclick = analyser;
 $("titre").addEventListener("keydown", e => { if (e.key === "Enter") analyser(); });
 
+// Variante locale de analyser() : lecture du .txt cote navigateur puis
+// envoi du contenu au serveur via POST /api/analyse-texte.
 async function analyserFichier(){
   const fichier = $("fichier").files[0];
   if (!fichier) { statut("Choisissez un fichier .txt.", true); return; }
@@ -1226,6 +1317,8 @@ $("attaque-btn").onclick = async () => {
 };
 
 // Chiffrement, dechiffrement et attaque des cifras a cle connue.
+// Ces trois fonctions sont partagees par Vigenere et Permutation :
+// seule l'URL de l'API change (voir l'objet CIFRAS plus haut).
 async function chiffrer(cible){
   const f = CIFRAS[cible];
   const bouton = $("crypto" + suffixe(cible));
@@ -1290,9 +1383,13 @@ $("attaque-btn-permutation").onclick = () => attaquerColonnes("permutation");
 
 
 def main() -> None:
+    """Lance le serveur local et ouvre automatiquement le navigateur."""
+    # ThreadingHTTPServer permet de répondre à plusieurs requêtes en parallèle
+    # (utile quand la page charge la matrice ET le dictionnaire).
     serveur = http.server.ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     adresse = f"http://127.0.0.1:{PORT}/"
     print(f"Interface disponible sur {adresse}  (Ctrl+C pour arreter)")
+    # On laisse le serveur démarrer avant d'ouvrir le navigateur.
     threading.Timer(0.6, webbrowser.open, args=(adresse,)).start()
     try:
         serveur.serve_forever()

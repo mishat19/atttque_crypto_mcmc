@@ -1,1 +1,4 @@
-Oui, c'est normal. Dans le top 5, plusieurs entrées sont le meilleur décalage de leur colonne (marquées ★) : cliquer dessus laisse cette colonne à sa valeur optimale, donc le texte déchiffré est identique au meilleur déchiffrement. Seules les entrées non-étoilées (ex. col1 d9) produisent un texte différent (incorrect). Clique sur une ligne sans ★ pour voir le texte attaqué alternatif.
+Oui, c'est normal. Dans le top 5, plusieurs entrées sont le meilleur décalage de leur colonne (marquées ★) : 
+cliquer dessus laisse cette colonne à sa valeur optimale, donc le texte déchiffré est identique au meilleur déchiffrement.
+ Seules les entrées non-étoilées (ex. col1 d9) produisent un texte différent (incorrect). Clique sur une ligne sans ★ pour
+  voir le texte attaqué alternatif.
