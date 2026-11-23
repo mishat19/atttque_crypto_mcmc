@@ -1,0 +1,914 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Attaque MCMC</title>
+<style>
+:root{
+  --fond:#FAFAFA; --surface:#FFFFFF; --encre:#0A0A0A; --texte:#262626; --doux:#737373; --pale:#A3A3A3;
+  --trait:#E5E5E5; --trait-fort:#D4D4D4; --survol:#F5F5F5;
+  --auto:#2563EB; --humain:#EA580C; --humain-fonce:#C2410C; --humain-pale:#FFF7ED;
+  --erreur:#DC2626;
+  --console:#0C0C0E; --console-trait:#1E1E22; --console-texte:#E4E4E7; --console-doux:#71717A;
+  --sans:Inter,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Consolas,"Liberation Mono",monospace;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--fond);color:var(--texte);font-family:var(--sans);font-size:14px;line-height:1.5;
+  -webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+[hidden]{display:none!important}
+button,input,select,textarea{font:inherit;color:inherit}
+code,.mono{font-family:var(--mono)}
+
+/* =============== BARRE DU HAUT =============== */
+.barre-haut{position:sticky;top:0;z-index:10;background:rgba(250,250,250,.85);backdrop-filter:saturate(180%) blur(8px);
+  border-bottom:1px solid var(--trait)}
+.barre-haut .dedans{max-width:1360px;margin:0 auto;padding:12px 24px;display:flex;align-items:center;gap:32px;flex-wrap:wrap}
+.marque{display:flex;align-items:baseline;gap:10px;margin-right:auto}
+.marque h1{font-size:15px;font-weight:600;color:var(--encre);margin:0;letter-spacing:-.01em}
+.marque span{font-size:13px;color:var(--doux)}
+
+.etapes{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;list-style:none;margin:0;padding:0;width:min(520px,100%)}
+.etape{padding-top:8px;position:relative;font-size:12.5px;color:var(--pale);white-space:nowrap}
+.etape::before{content:"";position:absolute;top:0;left:0;right:0;height:2px;border-radius:2px;background:var(--trait)}
+.etape b{font-weight:500}
+.etape small{font-size:11px;margin-left:4px}
+.etape.faite{color:var(--doux)}
+.etape.faite::before{background:var(--encre)}
+.etape.courante{color:var(--encre)}
+.etape.courante b{font-weight:600}
+.etape.humain.courante::before{background:var(--humain)}
+.etape.auto.courante::before{background:var(--auto)}
+
+/* =============== MISE EN PAGE =============== */
+.page{max-width:1360px;margin:0 auto;padding:24px;display:grid;grid-template-columns:minmax(0,1fr);gap:24px;align-items:start}
+@media (min-width:1040px){.page{grid-template-columns:380px minmax(0,1fr)}}
+@media (max-width:640px){.page{padding:16px}.barre-haut .dedans{padding:12px 16px;gap:12px}}
+
+/* =============== PANNEAU D'ENTRÉE =============== */
+.entrees{background:var(--surface);border:1px solid var(--trait);border-radius:10px}
+@media (min-width:1040px){.entrees{position:sticky;top:76px}}
+.bloc{padding:18px 20px}
+.bloc+.bloc{border-top:1px solid var(--trait)}
+.bloc-tete{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
+.titre{font-size:12px;font-weight:600;color:var(--encre);text-transform:uppercase;letter-spacing:.06em;margin:0}
+.liens{display:flex;gap:2px}
+.lien{background:none;border:0;padding:3px 7px;border-radius:5px;font-size:12.5px;color:var(--doux);cursor:pointer}
+.lien:hover{color:var(--encre);background:var(--survol)}
+
+textarea,input[type=number],select{width:100%;background:var(--surface);border:1px solid var(--trait-fort);border-radius:7px;
+  padding:7px 10px;font-size:13.5px;transition:border-color .12s, box-shadow .12s}
+textarea{font-family:var(--mono);font-size:12.5px;line-height:1.6;resize:vertical;min-height:150px;display:block}
+textarea:focus,input:focus,select:focus{outline:none;border-color:var(--encre);box-shadow:0 0 0 3px rgba(10,10,10,.06)}
+input::placeholder,textarea::placeholder{color:var(--pale)}
+label{display:block;font-size:12px;color:var(--doux);margin-bottom:5px}
+
+.depot{position:relative}
+.depot .voile{position:absolute;inset:0;border:1.5px dashed var(--humain);border-radius:7px;background:rgba(255,247,237,.92);
+  display:none;place-items:center;font-size:13px;font-weight:500;color:var(--humain-fonce);pointer-events:none}
+.depot.survol .voile{display:grid}
+.compteur{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--pale);margin-top:6px}
+
+.segment{display:grid;grid-template-columns:1fr 1fr;background:var(--survol);border-radius:8px;padding:3px}
+.segment button{border:0;background:none;padding:7px 10px;border-radius:6px;font-size:13.5px;font-weight:500;color:var(--doux);cursor:pointer}
+.segment button[aria-pressed=true]{background:var(--surface);color:var(--encre);box-shadow:0 1px 2px rgba(0,0,0,.08),0 0 0 1px rgba(0,0,0,.04)}
+.aide{font-size:12.5px;color:var(--doux);margin:8px 0 0}
+
+.champs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:14px}
+
+.btn{border-radius:7px;padding:8px 14px;font-size:13.5px;font-weight:500;cursor:pointer;border:1px solid transparent;
+  transition:background .12s,border-color .12s,color .12s}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn:focus-visible,.lien:focus-visible,.segment button:focus-visible{outline:2px solid var(--encre);outline-offset:2px}
+.btn-humain{background:var(--humain);color:#fff}
+.btn-humain:hover:not(:disabled){background:var(--humain-fonce)}
+.btn-ligne{background:var(--surface);border-color:var(--trait-fort);color:var(--encre)}
+.btn-ligne:hover:not(:disabled){background:var(--survol)}
+.btn-plein{width:100%;padding:10px 14px;font-size:14px}
+.rangee{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-top:10px}
+
+.erreur{color:var(--erreur);font-size:12.5px;margin-top:8px;display:flex;gap:6px}
+.erreur::before{content:"!";flex:none;width:16px;height:16px;border-radius:50%;background:var(--erreur);color:#fff;
+  font-size:11px;font-weight:700;display:grid;place-items:center;margin-top:1px}
+.cles{display:grid;grid-template-columns:auto minmax(0,1fr);gap:3px 12px;margin:10px 0 0;font-size:12.5px}
+.cles dt{color:var(--doux)}
+.cles dd{margin:0;font-family:var(--mono);color:var(--encre);overflow-wrap:anywhere}
+
+/* =============== FRÉQUENCE DES CARACTÈRES =============== */
+.stats{background:var(--surface);border:1px solid var(--trait);border-radius:10px;padding:18px 20px}
+.stats-tete{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.stats-tete h2{font-size:15px;font-weight:600;color:var(--encre);margin:0;letter-spacing:-.01em}
+.legende-stats{display:flex;gap:14px;font-size:12px;color:var(--doux)}
+.legende-stats i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.pastille-chiffre{background:var(--encre)}
+.pastille-fr{background:#D4D4D4}
+.histogramme{display:grid;grid-template-columns:repeat(26,minmax(0,1fr));gap:3px;height:150px;margin-top:16px}
+.colonne-lettre{display:flex;flex-direction:column;min-width:0}
+.barres{flex:1;display:flex;align-items:flex-end;gap:1px;border-bottom:1px solid var(--trait)}
+.barres i{flex:1;display:block;border-radius:2px 2px 0 0;min-height:1px}
+.barres .b-chiffre{background:var(--encre)}
+.barres .b-fr{background:#D4D4D4}
+.colonne-lettre span{font-family:var(--mono);font-size:10.5px;color:var(--doux);text-align:center;margin-top:4px}
+.colonne-lettre.premiere span{color:var(--encre);font-weight:700}
+.mesures{display:flex;flex-wrap:wrap;gap:8px 32px;margin:18px 0 0;font-size:12.5px}
+.mesures div{display:flex;flex-direction:column;gap:2px}
+.mesures dt{color:var(--doux)}
+.mesures dd{margin:0;font-family:var(--mono);color:var(--encre);font-size:13.5px}
+.mesures dd small{font-family:var(--sans);color:var(--pale);font-size:11.5px;margin-left:8px}
+
+/* Extra de Mathis : mots absents du dictionnaire */
+mark.inconnu{background:#FEF08A;color:inherit;border-radius:2px;box-shadow:0 0 0 1px #FDE047}
+.mots{font-weight:600;color:var(--encre)}
+.mots.bas{color:var(--erreur)}
+
+/* =============== CONSOLE : LE TEXTE QUI SE RÉPARE =============== */
+.principal{display:flex;flex-direction:column;gap:24px;min-width:0}
+.console{background:var(--console);border-radius:10px;color:var(--console-texte);overflow:hidden;
+  box-shadow:0 1px 2px rgba(0,0,0,.1),0 8px 24px -12px rgba(0,0,0,.35)}
+.console-tete{display:flex;align-items:center;gap:14px;padding:12px 16px;border-bottom:1px solid var(--console-trait);flex-wrap:wrap}
+.console-tete h2{font-size:13px;font-weight:500;margin:0;color:#FAFAFA;display:flex;align-items:center;gap:8px}
+.voyant{width:7px;height:7px;border-radius:50%;background:#3F3F46}
+.console.active .voyant{background:var(--auto);box-shadow:0 0 0 3px rgba(37,99,235,.25);animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.45}}
+.console-etat{font-size:12px;color:var(--console-doux);margin-left:auto;display:flex;gap:12px;align-items:center;font-family:var(--mono)}
+.console-etat b{color:var(--console-texte);font-weight:500}
+.btn-console{background:transparent;border:1px solid #3F3F46;color:#D4D4D8;padding:4px 10px;font-size:12px;border-radius:6px;cursor:pointer}
+.btn-console:hover:not(:disabled){background:#18181B}
+.btn-console:disabled{opacity:.35;cursor:not-allowed}
+.progression{height:2px;background:var(--console-trait)}
+.progression i{display:block;height:100%;width:0;background:var(--auto);transition:width .2s linear}
+
+
+.suivi{font-family:var(--mono);font-size:12.5px;max-height:340px;min-height:180px;overflow-y:auto;padding:6px 0 10px;
+  scrollbar-color:#3F3F46 transparent}
+.suivi .vide{color:var(--console-doux);font-family:var(--sans);font-size:13px;padding:56px 16px;text-align:center}
+.ligne-suivi{display:grid;grid-template-columns:13ch 10ch minmax(0,1fr);gap:16px;padding:2px 16px;color:#A1A1AA}
+.ligne-suivi .it{color:var(--console-doux);white-space:nowrap}
+.ligne-suivi .ls{color:#60A5FA;text-align:right;white-space:nowrap;opacity:.75}
+.ligne-suivi .tx{white-space:pre;overflow:hidden;text-overflow:ellipsis}
+.ligne-suivi.derniere{background:#16161A;color:#FAFAFA}
+.ligne-suivi.derniere .ls{opacity:1}
+.ligne-suivi mark{background:none;color:#FBBF24;text-decoration:underline;text-decoration-color:rgba(251,191,36,.5);text-underline-offset:3px}
+.ligne-suivi.separateur{display:block;color:var(--console-doux);font-size:11px;padding:10px 16px 4px;letter-spacing:.04em}
+.message-console{font-size:12.5px;padding:10px 16px;border-top:1px solid var(--console-trait);color:var(--console-doux)}
+.message-console.erreur-console{color:#F87171}
+
+/* =============== RÉSULTATS =============== */
+.section-tete{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+.section-tete h2{font-size:15px;font-weight:600;color:var(--encre);margin:0;letter-spacing:-.01em}
+.section-tete p{margin:0;font-size:12.5px;color:var(--doux)}
+.aide-resultats{font-size:13px;color:var(--doux);margin:0 0 14px;max-width:80ch}
+
+.longueurs{width:100%;border-collapse:collapse;font-size:13px;background:var(--surface);border:1px solid var(--trait);
+  border-radius:10px;overflow:hidden;margin-bottom:16px}
+.tableau-enveloppe{overflow-x:auto}
+.longueurs th{font-weight:500;color:var(--doux);font-size:12px;text-align:left;padding:8px 14px;border-bottom:1px solid var(--trait);white-space:nowrap}
+.longueurs td{padding:8px 14px;border-bottom:1px solid var(--trait);font-family:var(--mono);white-space:nowrap;color:var(--texte)}
+.longueurs tr:last-child td{border-bottom:0}
+.longueurs .nombre{text-align:right}
+.longueurs tbody tr{cursor:pointer;transition:background .1s}
+.longueurs tbody tr:hover{background:var(--survol)}
+.longueurs tbody tr.actif{background:#EFF6FF}
+.longueurs tbody tr.actif td:first-child{box-shadow:inset 2px 0 0 var(--auto);color:var(--encre);font-weight:600}
+.etoile{color:var(--auto);font-family:var(--sans);font-size:11px;margin-left:6px}
+
+.liste{background:var(--surface);border:1px solid var(--trait);border-radius:10px}
+.prop{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:16px;padding:16px 18px;border-top:1px solid var(--trait);
+  transition:background .1s}
+.prop:first-child{border-top:0;border-radius:10px 10px 0 0}
+.prop:last-child{border-radius:0 0 10px 10px}
+.prop:hover{background:#FCFCFC}
+.prop.choisie{background:var(--humain-pale);box-shadow:inset 2px 0 0 var(--humain)}
+.prop-rang{font-size:13px;font-weight:600;color:var(--pale);padding-top:1px}
+.prop.choisie .prop-rang{color:var(--humain)}
+.prop-texte{font-family:var(--mono);font-size:12.5px;line-height:1.65;color:var(--encre);margin:0;overflow-wrap:anywhere;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.prop.ouverte .prop-texte{display:block;-webkit-line-clamp:unset;white-space:pre-wrap}
+.prop-meta{display:flex;flex-wrap:wrap;gap:4px 16px;margin-top:8px;font-size:12px;color:var(--doux)}
+.prop-meta code{color:var(--texte);font-size:12px}
+.prop-actions{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+@media (max-width:640px){
+  .prop{grid-template-columns:minmax(0,1fr)}
+  .prop-rang{display:none}
+  .prop-actions{flex-direction:row;align-items:center}
+}
+
+/* =============== TEXTE RETENU =============== */
+.final{background:var(--surface);border:1px solid var(--trait);border-radius:10px;overflow:hidden}
+.final-tete{display:flex;align-items:center;gap:16px;padding:14px 18px;border-bottom:1px solid var(--trait);flex-wrap:wrap}
+.final-tete h2{font-size:15px;font-weight:600;color:var(--encre);margin:0;display:flex;align-items:center;gap:8px}
+.final-tete h2::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--humain)}
+.final-tete .cles{margin:0;display:flex;flex-wrap:wrap;gap:4px 16px}
+.final-tete .cles div{display:flex;gap:6px}
+.final-tete .actions{margin-left:auto;display:flex;align-items:center;gap:10px}
+.retour{font-size:12.5px;color:var(--doux)}
+.final-texte{font-family:var(--mono);font-size:13px;line-height:1.75;color:var(--encre);margin:0;padding:18px;
+  white-space:pre-wrap;overflow-wrap:anywhere;max-height:440px;overflow-y:auto}
+</style>
+</head>
+<body>
+
+<header class="barre-haut">
+  <div class="dedans">
+    <div class="marque">
+      <h1>Attaque MCMC</h1>
+      <span>substitution · permutation</span>
+    </div>
+    <ol class="etapes" aria-label="Étapes">
+      <li class="etape humain" data-etape="1"><b>1 Texte</b><small>vous</small></li>
+      <li class="etape humain" data-etape="2"><b>2 Mode</b><small>vous</small></li>
+      <li class="etape auto" data-etape="3"><b>3 Attaque</b><small>auto</small></li>
+      <li class="etape humain" data-etape="4"><b>4 Choix</b><small>vous</small></li>
+    </ol>
+  </div>
+</header>
+
+<div class="page">
+  <!-- =============== ENTRÉES =============== -->
+  <aside class="entrees">
+    <section class="bloc">
+      <div class="bloc-tete">
+        <h2 class="titre">Cryptogramme</h2>
+        <div class="liens">
+          <button class="lien" id="bouton-fichier" type="button">Fichier…</button>
+          <button class="lien" id="bouton-exemple" type="button">Exemple</button>
+          <button class="lien" id="bouton-vider" type="button">Vider</button>
+        </div>
+      </div>
+      <input type="file" id="fichier" accept=".txt,text/plain" hidden>
+      <div class="depot" id="depot">
+        <textarea id="texte" spellcheck="false" placeholder="Collez le texte chiffré ou déposez un fichier .txt"></textarea>
+        <div class="voile">Déposer le fichier</div>
+      </div>
+      <div class="compteur"><span id="compteur">0 caractère</span><span id="source-texte"></span></div>
+      <div class="erreur" id="erreur-texte" hidden></div>
+    </section>
+
+    <section class="bloc">
+      <div class="bloc-tete"><h2 class="titre">Mode</h2></div>
+      <div class="segment" role="group" aria-label="Mode d'attaque">
+        <button type="button" id="mode-lettres" aria-pressed="true">Substitution</button>
+        <button type="button" id="mode-positions" aria-pressed="false">Permutation</button>
+      </div>
+      <p class="aide" id="mode-aide"></p>
+
+      <div class="champs">
+        <div><label for="iterations">Itérations</label><input type="number" id="iterations" value="20000" min="1" max="500000" step="1000"></div>
+        <div><label for="propositions">Propositions</label><input type="number" id="propositions" value="5" min="1" max="50"></div>
+        <div class="seulement-positions"><label for="longueur-max">ℓ max</label><input type="number" id="longueur-max" value="8" min="2" max="12"></div>
+      </div>
+    </section>
+
+    <section class="bloc">
+      <button class="btn btn-humain btn-plein" id="bouton-lancer" type="button">Lancer l'attaque</button>
+      <div class="erreur" id="erreur-parametres" hidden></div>
+    </section>
+  </aside>
+
+  <!-- =============== DIRECT ET RÉSULTATS =============== -->
+  <main class="principal">
+    <section class="stats" id="carte-frequences" hidden>
+      <div class="stats-tete">
+        <h2>Fréquence des caractères</h2>
+        <div class="legende-stats">
+          <span><i class="pastille-chiffre"></i>texte chiffré</span>
+          <span><i class="pastille-fr"></i>français (texte de référence)</span>
+        </div>
+      </div>
+      <div class="histogramme" id="histogramme" role="img" aria-label="Fréquence de chaque lettre, texte chiffré et français"></div>
+      <dl class="mesures" id="mesures"></dl>
+    </section>
+
+    <section class="console" id="console">
+      <div class="console-tete">
+        <h2><span class="voyant"></span>Le texte qui se répare</h2>
+        <div class="console-etat">
+          <span id="pastille-l" hidden></span>
+          <span id="progression-texte">en attente</span>
+          <span id="duree"></span>
+          <button class="btn-console" id="bouton-annuler" type="button" disabled>Annuler</button>
+        </div>
+      </div>
+      <div class="progression" aria-hidden="true"><i id="barre"></i></div>
+      <div class="suivi" id="suivi"><div class="vide">Chaque ligne montre le texte déchiffré avec la clé courante de la chaîne.</div></div>
+      <div class="message-console erreur-console" id="erreur-attaque" hidden></div>
+      <div class="message-console" id="info-attaque" hidden></div>
+    </section>
+
+    <section id="carte-resultats" hidden>
+      <div class="section-tete">
+        <h2>Clés proposées</h2>
+        <p>Choisissez celle dont le texte se lit · <mark class="inconnu">surligné</mark> = mot absent du dictionnaire</p>
+      </div>
+      <p class="aide-resultats" id="aide-resultats"></p>
+      <div id="resume-permutation"></div>
+      <div class="liste" id="propositions-liste"></div>
+    </section>
+
+    <section class="final" id="carte-final" hidden>
+      <div class="final-tete">
+        <h2>Texte retenu</h2>
+        <dl class="cles" id="final-cles"></dl>
+        <div class="actions">
+          <span class="retour" id="retour-copie" hidden></span>
+          <button class="btn btn-ligne" id="bouton-copier" type="button">Copier</button>
+        </div>
+      </div>
+      <pre class="final-texte" id="final-texte"></pre>
+    </section>
+  </main>
+</div>
+
+<script>
+"use strict";
+
+// =============== OUTILS ===============
+const $ = (id) => document.getElementById(id);
+const nombre = (n) => Number(n).toLocaleString("fr-FR");
+const decimal = (n) => Number(n).toLocaleString("fr-FR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+function el(balise, attributs, enfants) {
+  const noeud = document.createElement(balise);
+  for (const [cle, valeur] of Object.entries(attributs || {})) {
+    if (valeur === undefined || valeur === null || valeur === false) continue;
+    if (cle === "texte") noeud.textContent = valeur;
+    else if (cle === "classe") noeud.className = valeur;
+    else if (cle.startsWith("on")) noeud.addEventListener(cle.slice(2), valeur);
+    else noeud.setAttribute(cle, valeur === true ? "" : valeur);
+  }
+  for (const enfant of [].concat(enfants || [])) {
+    if (enfant === null || enfant === undefined) continue;
+    noeud.append(enfant instanceof Node ? enfant : String(enfant));
+  }
+  return noeud;
+}
+
+function message(id, texte) {
+  const zone = $(id);
+  zone.textContent = texte || "";
+  zone.hidden = !texte;
+}
+
+async function appeler(url, corps) {
+  const options = corps === undefined ? {} : {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(corps),
+  };
+  let reponse;
+  try {
+    reponse = await fetch(url, options);
+  } catch (e) {
+    throw new Error("Le serveur ne répond pas. Est-il toujours lancé (python3 mcmc/web.py) ?");
+  }
+  let donnees;
+  try { donnees = await reponse.json(); }
+  catch (e) { throw new Error("Réponse illisible du serveur."); }
+  if (!reponse.ok || donnees.erreur) throw new Error(donnees.erreur || "Erreur " + reponse.status);
+  return donnees;
+}
+
+// =============== ÉTAT DE LA PAGE ===============
+const etat = {
+  mode: "lettres",
+  travail: null,
+  depuis: 0,
+  instantanes: [],
+  derniereLigne: null,
+  minuteur: null,
+  animation: null,
+  file: [],
+  dernierEtat: null,
+  fin: null,
+  resultats: null,
+  longueurActive: null,
+};
+
+// =============== FRÉQUENCE DES CARACTÈRES ===============
+// Aide au choix du mode : une permutation garde les lettres (mêmes fréquences
+// que le français, E en tête) ; une substitution garde le profil mais le porte
+// par d'autres lettres.
+const LETTRES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+let FREQ_FR = null;
+let minuteurFrequences = null;
+
+function analyserFrequences(brut) {
+  const texte = brut.replace(/[œŒ]/g, "OE").replace(/[æÆ]/g, "AE")
+    .normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
+  const comptes = Object.fromEntries([...LETTRES].map((c) => [c, 0]));
+  let lettres = 0;
+  for (const c of texte) if (c in comptes) { comptes[c]++; lettres++; }
+  const sansRetours = brut.replace(/\r?\n/g, "");
+  const frequences = Object.fromEntries([...LETTRES].map((c) => [c, lettres ? (100 * comptes[c]) / lettres : 0]));
+  const ordre = [...LETTRES].sort((a, b) => comptes[b] - comptes[a] || a.localeCompare(b));
+  return { lettres, frequences, ordre, doublesEspaces: (sansRetours.match(/ {2}/g) || []).length };
+}
+
+function planifierFrequences() {
+  clearTimeout(minuteurFrequences);
+  minuteurFrequences = setTimeout(majFrequences, 120);
+}
+
+function majFrequences() {
+  const texte = $("texte").value;
+  const carte = $("carte-frequences");
+  if (!texte.trim() || !FREQ_FR) { carte.hidden = true; return; }
+  carte.hidden = false;
+  const a = analyserFrequences(texte);
+  const pct = (v) => decimal(v) + " %";
+
+  // Histogramme : chiffré (foncé) et français (gris) côte à côte, par lettre.
+  const maxi = Math.max(1, ...LETTRES.split("").map((c) => Math.max(a.frequences[c], FREQ_FR.lettres[c])));
+  $("histogramme").replaceChildren(...LETTRES.split("").map((c) => el("div", {
+    classe: "colonne-lettre" + (a.lettres && c === a.ordre[0] ? " premiere" : ""),
+    title: c + " : " + pct(a.frequences[c]) + " (français " + pct(FREQ_FR.lettres[c]) + ")",
+  }, [
+    el("div", { classe: "barres" }, [
+      el("i", { classe: "b-chiffre", style: "height:" + (100 * a.frequences[c] / maxi).toFixed(1) + "%" }),
+      el("i", { classe: "b-fr", style: "height:" + (100 * FREQ_FR.lettres[c] / maxi).toFixed(1) + "%" }),
+    ]),
+    el("span", { texte: c }),
+  ])));
+
+  const ordreFr = [...LETTRES].sort((x, y) => FREQ_FR.lettres[y] - FREQ_FR.lettres[x]);
+  const mesure = (titre, valeur, note) => el("div", {}, [
+    el("dt", { texte: titre }),
+    el("dd", {}, [valeur, note ? el("small", { texte: note }) : null]),
+  ]);
+  $("mesures").replaceChildren(
+    mesure("Lettres les plus fréquentes", a.ordre.slice(0, 5).join(" "), "français : " + ordreFr.slice(0, 5).join(" ")),
+    mesure("Doubles espaces", nombre(a.doublesEspaces), "le français n'en a pas"),
+    mesure("Lettres analysées", nombre(a.lettres)),
+  );
+}
+
+appeler("/api/frequences").then((donnees) => { FREQ_FR = donnees; majFrequences(); }).catch(() => {});
+
+function etapeCourante(n) {
+  document.querySelectorAll(".etape").forEach((etape) => {
+    const numero = Number(etape.dataset.etape);
+    etape.classList.toggle("courante", numero === n);
+    etape.classList.toggle("faite", numero < n);
+  });
+}
+
+function etapeSelonTexte() {
+  if (etat.travail || etat.resultats) return;
+  etapeCourante($("texte").value.trim() ? 2 : 1);
+}
+
+// =============== 1. TEXTE ===============
+function majCompteur() {
+  const n = $("texte").value.length;
+  $("compteur").textContent = nombre(n) + (n > 1 ? " caractères" : " caractère");
+  etapeSelonTexte();
+  planifierFrequences();
+}
+
+function remplirTexte(texte, source) {
+  $("texte").value = texte;
+  $("source-texte").textContent = source || "";
+  message("erreur-texte", "");
+  majCompteur();
+}
+
+function lireFichier(fichier) {
+  message("erreur-texte", "");
+  if (!fichier) return;
+  const nomOk = /\.txt$/i.test(fichier.name);
+  const typeOk = !fichier.type || fichier.type.startsWith("text/");
+  if (!nomOk || !typeOk) {
+    message("erreur-texte", "« " + fichier.name + " » n'est pas un fichier texte (.txt).");
+    return;
+  }
+  if (fichier.size > 2_000_000) {
+    message("erreur-texte", "Fichier trop gros (2 Mo maximum).");
+    return;
+  }
+  const lecteur = new FileReader();
+  lecteur.onload = () => {
+    const texte = String(lecteur.result);
+    if (texte.includes("\u0000")) {
+      message("erreur-texte", "« " + fichier.name + " » contient des données binaires : ce n'est pas du texte.");
+      return;
+    }
+    remplirTexte(texte.replace(/\r?\n$/, ""), fichier.name);
+  };
+  lecteur.onerror = () => message("erreur-texte", "Lecture du fichier impossible.");
+  lecteur.readAsText(fichier, "utf-8");
+}
+
+$("texte").addEventListener("input", () => { $("source-texte").textContent = ""; majCompteur(); });
+$("bouton-fichier").addEventListener("click", () => $("fichier").click());
+$("fichier").addEventListener("change", (e) => { lireFichier(e.target.files[0]); e.target.value = ""; });
+$("bouton-vider").addEventListener("click", () => remplirTexte("", ""));
+
+const depot = $("depot");
+["dragenter", "dragover"].forEach((type) => depot.addEventListener(type, (e) => {
+  e.preventDefault();
+  depot.classList.add("survol");
+}));
+["dragleave", "drop"].forEach((type) => depot.addEventListener(type, (e) => {
+  e.preventDefault();
+  depot.classList.remove("survol");
+}));
+depot.addEventListener("drop", (e) => lireFichier(e.dataTransfer.files[0]));
+// Un fichier lâché ailleurs ne doit pas remplacer la page.
+window.addEventListener("dragover", (e) => e.preventDefault());
+window.addEventListener("drop", (e) => e.preventDefault());
+
+$("bouton-exemple").addEventListener("click", async () => {
+  message("erreur-texte", "");
+  try {
+    const donnees = await appeler("/api/exemple?mode=" + etat.mode);
+    remplirTexte(donnees.texte, "mcmc/" + donnees.fichier);
+  } catch (e) {
+    message("erreur-texte", e.message);
+  }
+});
+
+// =============== 2. MODE ===============
+const AIDES_MODE = {
+  lettres: "Chaque lettre est remplacée par une autre. La chaîne échange deux lettres de la clé à chaque pas.",
+  positions: "Les lettres sont réordonnées par blocs de ℓ. La chaîne déplace un sous-bloc de la permutation ; on essaie ℓ = 2, 3, …",
+};
+
+function choisirMode(mode) {
+  etat.mode = mode;
+  $("mode-lettres").setAttribute("aria-pressed", mode === "lettres");
+  $("mode-positions").setAttribute("aria-pressed", mode === "positions");
+  document.querySelectorAll(".seulement-positions").forEach((n) => { n.hidden = mode !== "positions"; });
+  $("mode-aide").textContent = AIDES_MODE[mode];
+}
+$("mode-lettres").addEventListener("click", () => choisirMode("lettres"));
+$("mode-positions").addEventListener("click", () => choisirMode("positions"));
+choisirMode("lettres");
+
+function lireParametres() {
+  const entier = (id, nom, mini, maxi) => {
+    const brut = $(id).value.trim();
+    if (!/^-?\d+$/.test(brut)) throw new Error("« " + nom + " » doit être un entier.");
+    const valeur = Number(brut);
+    if (valeur < mini || valeur > maxi) throw new Error("« " + nom + " » doit être compris entre " + nombre(mini) + " et " + nombre(maxi) + ".");
+    return valeur;
+  };
+  const texte = $("texte").value;
+  if (!texte.trim()) throw new Error("Le texte chiffré est vide : collez-le, joignez un fichier ou chargez un exemple.");
+
+  // Les autres paramètres (graine, chauffe, ℓ min…) gardent les valeurs par défaut du serveur.
+  const p = {
+    texte,
+    mode: etat.mode,
+    iterations: entier("iterations", "Itérations", 1, 500000),
+    propositions: entier("propositions", "Propositions", 1, 50),
+  };
+  if (etat.mode === "positions") p.longueur_max = entier("longueur-max", "ℓ max", 2, 12);
+  return p;
+}
+
+// =============== 3. ATTAQUE ===============
+function reinitialiserDirect() {
+  etat.depuis = 0;
+  etat.file = [];
+  etat.dernierEtat = null;
+  etat.instantanes = [];
+  etat.derniereLigne = null;
+  etat.resultats = null;
+  $("suivi").replaceChildren();
+  $("barre").style.width = "0";
+  $("pastille-l").hidden = true;
+  $("duree").textContent = "";
+  message("erreur-attaque", "");
+  message("info-attaque", "");
+  $("carte-resultats").hidden = true;
+  $("carte-final").hidden = true;
+}
+
+$("bouton-lancer").addEventListener("click", async () => {
+  message("erreur-parametres", "");
+  let parametres;
+  try { parametres = lireParametres(); }
+  catch (e) { message("erreur-parametres", e.message); return; }
+
+  finAttaque();
+  reinitialiserDirect();
+  $("bouton-lancer").disabled = true;
+  $("progression-texte").textContent = "démarrage…";
+  try {
+    const { id } = await appeler("/api/attaque", parametres);
+    etat.travail = { id, mode: parametres.mode };
+    etapeCourante(3);
+    $("console").classList.add("active");
+    $("bouton-annuler").disabled = false;
+    interroger();
+    etat.animation = setTimeout(animer, PAS_ANIMATION);
+  } catch (e) {
+    message("erreur-parametres", e.message);
+    $("progression-texte").textContent = "en attente";
+    $("bouton-lancer").disabled = false;
+  }
+});
+
+$("bouton-annuler").addEventListener("click", async () => {
+  if (!etat.travail) return;
+  $("bouton-annuler").disabled = true;
+  try { await appeler("/api/annuler", { id: etat.travail.id }); }
+  catch (e) { message("erreur-attaque", e.message); }
+});
+
+function arreterSuivi() {
+  if (etat.minuteur) clearTimeout(etat.minuteur);
+  etat.minuteur = null;
+}
+
+async function interroger() {
+  const travail = etat.travail;
+  if (!travail) return;
+  let donnees;
+  try {
+    donnees = await appeler("/api/etat?id=" + travail.id + "&depuis=" + etat.depuis);
+  } catch (e) {
+    message("erreur-attaque", e.message);
+    finAttaque();
+    return;
+  }
+  if (etat.travail !== travail) return;  // une autre attaque a été lancée entre-temps
+
+  etat.file.push(...donnees.instantanes);
+  etat.depuis = donnees.nb_instantanes;
+  etat.dernierEtat = donnees;
+  $("duree").textContent = decimal(donnees.duree) + " s";
+
+  if (donnees.termine) {
+    arreterSuivi();
+    etat.fin = donnees;
+    $("bouton-annuler").disabled = true;
+    return;
+  }
+  etat.minuteur = setTimeout(interroger, 300);
+}
+
+// Le moteur est souvent plus rapide que l'œil : les instantanés reçus sont
+// rejoués un par un (en 3 s au plus), puis les résultats s'affichent.
+const PAS_ANIMATION = 70;
+const LIGNES_PAR_PAS_MAX = 40;
+
+function animer() {
+  if (!etat.animation) return;
+  const reste = etat.file.length;
+  if (reste) {
+    const n = Math.max(1, Math.ceil(reste / LIGNES_PAR_PAS_MAX));
+    const lot = etat.file.splice(0, n);
+    ajouterInstantanes(lot);
+    if (etat.dernierEtat) majProgression(etat.dernierEtat, lot[lot.length - 1]);
+  } else if (etat.fin) {
+    terminer(etat.fin);
+    return;
+  }
+  etat.animation = setTimeout(animer, PAS_ANIMATION);
+}
+
+function terminer(donnees) {
+  etat.animation = null;
+  etat.fin = null;
+  etat.travail = null;
+  $("console").classList.remove("active");
+  $("bouton-annuler").disabled = true;
+  $("bouton-lancer").disabled = false;
+  majProgression(donnees, null);
+
+  if (donnees.erreur) { message("erreur-attaque", donnees.erreur); return; }
+  const res = donnees.resultats;
+  if (donnees.annule) {
+    const partiel = res && res.longueurs && res.longueurs.length;
+    message("info-attaque", partiel
+      ? "Attaque annulée — seules les longueurs ℓ terminées sont affichées."
+      : "Attaque annulée avant la fin — aucune proposition.");
+    if (!partiel) { etapeCourante($("texte").value.trim() ? 2 : 1); return; }
+  } else {
+    message("info-attaque", "Terminé en " + decimal(donnees.duree) + " s · "
+      + nombre(donnees.total) + " itérations · " + nombre(donnees.nb_caracteres) + " caractères");
+  }
+  afficherResultats(res);
+}
+
+function finAttaque() {
+  arreterSuivi();
+  if (etat.animation) clearTimeout(etat.animation);
+  etat.animation = null;
+  etat.fin = null;
+  etat.travail = null;
+  $("console").classList.remove("active");
+  $("bouton-annuler").disabled = true;
+  $("bouton-lancer").disabled = false;
+}
+
+// Pendant le rejeu, la barre suit l'instantané affiché ; à la fin, le serveur.
+function majProgression(d, instantane) {
+  const termineOk = d.termine && !instantane;
+  const iteration = instantane ? Math.min(instantane.iteration, d.iteration) : d.iteration;
+  const longueur = instantane && instantane.longueur ? instantane.longueur : d.longueur_en_cours;
+  const valeur = termineOk ? d.iteration : iteration;
+  const part = d.total ? Math.min(1, valeur / d.total) : 0;
+  $("barre").style.width = (part * 100).toFixed(1) + "%";
+  $("progression-texte").replaceChildren(el("b", { texte: nombre(valeur) }), " / " + nombre(d.total));
+  if (d.mode === "positions" && longueur) {
+    $("pastille-l").hidden = false;
+    $("pastille-l").textContent = "ℓ " + longueur + "/" + d.longueur_max;
+  }
+}
+
+// Le texte de la dernière ligne : les caractères qui ont changé depuis la
+// photo précédente de la même marche sont mis en évidence.
+function texteSurligne(texte, precedent) {
+  const conteneur = el("span", { classe: "tx" });
+  if (!precedent) { conteneur.textContent = texte; return conteneur; }
+  let tampon = "", marque = false;
+  const vider = () => {
+    if (!tampon) return;
+    conteneur.append(marque ? el("mark", { texte: tampon }) : tampon);
+    tampon = "";
+  };
+  for (let i = 0; i < texte.length; i++) {
+    const change = texte[i] !== precedent[i];
+    if (change !== marque) { vider(); marque = change; }
+    tampon += texte[i];
+  }
+  vider();
+  return conteneur;
+}
+
+function ajouterInstantanes(nouveaux) {
+  if (!nouveaux || !nouveaux.length) return;
+  const suivi = $("suivi");
+  const enBas = suivi.scrollHeight - suivi.scrollTop - suivi.clientHeight < 40;
+
+  for (const inst of nouveaux) {
+    const precedent = etat.instantanes[etat.instantanes.length - 1];
+    if (inst.longueur && (!precedent || precedent.marche !== inst.marche)) {
+      suivi.append(el("div", { classe: "ligne-suivi separateur",
+        texte: "— ℓ = " + inst.longueur + (precedent && precedent.longueur === inst.longueur ? " · redémarrage" : "") }));
+    }
+    if (etat.derniereLigne) {
+      etat.derniereLigne.classList.remove("derniere");
+      const tx = etat.derniereLigne.querySelector(".tx");
+      tx.replaceChildren(tx.textContent);
+    }
+    const memeMarche = precedent && precedent.marche === inst.marche ? precedent.texte : null;
+    const ligne = el("div", { classe: "ligne-suivi derniere" }, [
+      el("span", { classe: "it", texte: "itér. " + nombre(inst.iteration_marche) }),
+      el("span", { classe: "ls", texte: decimal(inst.score) }),
+      texteSurligne(inst.texte, memeMarche),
+    ]);
+    suivi.append(ligne);
+    etat.derniereLigne = ligne;
+    etat.instantanes.push(inst);
+  }
+  if (enBas || etat.instantanes.length === nouveaux.length) suivi.scrollTop = suivi.scrollHeight;
+}
+
+// =============== 4. RÉSULTATS ET CHOIX ===============
+function afficherResultats(res) {
+  etat.resultats = res;
+  etapeCourante(4);
+  $("carte-resultats").hidden = false;
+  $("resume-permutation").replaceChildren();
+
+  if (res.mode === "lettres") {
+    $("aide-resultats").textContent = "Partie de la clé " + res.cle_initiale + " (log S = " + decimal(res.score_initial)
+      + "). Le score n'est qu'une approximation : c'est la lecture qui tranche.";
+    afficherPropositions(res.propositions, null);
+    return;
+  }
+
+  $("aide-resultats").textContent = "Une ligne par longueur ℓ. Retenir la plus petite ℓ dont le texte est lisible ; "
+    + "log S − log(ℓ!) pénalise les grandes longueurs.";
+  const meilleure = res.resume.reduce((a, b) => (b.penalise > a.penalise ? b : a), res.resume[0]);
+
+  const corps = el("tbody");
+  for (const ligne of res.resume) {
+    corps.append(el("tr", {
+      "data-l": ligne.longueur, tabindex: 0,
+      onclick: () => choisirLongueur(ligne.longueur),
+      onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); choisirLongueur(ligne.longueur); } },
+    }, [
+      el("td", {}, ["ℓ = " + ligne.longueur, ligne === meilleure ? el("span", { classe: "etoile", texte: "meilleur" }) : null]),
+      el("td", { classe: "nombre", texte: decimal(ligne.score) }),
+      el("td", { classe: "nombre", texte: decimal(ligne.penalise) }),
+      el("td", { classe: "nombre", texte: ligne.mots ? ligne.mots.pourcentage + " %" : "—" }),
+      el("td", { texte: ligne.cle }),
+    ]));
+  }
+  $("resume-permutation").append(el("div", { classe: "tableau-enveloppe" }, el("table", { classe: "longueurs" }, [
+    el("thead", {}, el("tr", {}, [
+      el("th", { texte: "Longueur" }), el("th", { classe: "nombre", texte: "log S" }),
+      el("th", { classe: "nombre", texte: "log S − log(ℓ!)" }), el("th", { classe: "nombre", texte: "mots reconnus" }),
+      el("th", { texte: "Meilleure clé" }),
+    ])),
+    corps,
+  ])));
+  choisirLongueur(meilleure.longueur);
+}
+
+function choisirLongueur(longueur) {
+  etat.longueurActive = longueur;
+  document.querySelectorAll(".longueurs tbody tr").forEach((tr) => tr.classList.toggle("actif", Number(tr.dataset.l) === longueur));
+  const entree = etat.resultats.longueurs.find((e) => e.longueur === longueur);
+  afficherPropositions(entree.propositions, longueur);
+}
+
+// Extra de Mathis : les mots absents du dictionnaire sont surlignés en jaune.
+function texteMots(texte, mots) {
+  if (!mots) return [texte];
+  const morceaux = [];
+  let position = 0;
+  for (const [debut, fin] of mots.inconnus) {
+    if (debut > position) morceaux.push(texte.slice(position, debut));
+    morceaux.push(el("mark", { classe: "inconnu", texte: texte.slice(debut, fin) }));
+    position = fin;
+  }
+  if (position < texte.length) morceaux.push(texte.slice(position));
+  return morceaux;
+}
+
+function resumeMots(mots) {
+  if (!mots) return null;
+  return el("span", {
+    classe: "mots" + (mots.pourcentage < 50 ? " bas" : ""),
+    texte: "mots reconnus : " + mots.pourcentage + " % (" + nombre(mots.reconnus) + "/" + nombre(mots.total) + ")",
+  });
+}
+
+function afficherPropositions(propositions, longueur) {
+  const liste = $("propositions-liste");
+  liste.replaceChildren();
+  for (const prop of propositions) {
+    const ligne = el("article", { classe: "prop" });
+    const bascule = el("button", {
+      classe: "lien", type: "button", texte: "Tout voir",
+      onclick: (e) => {
+        const ouverte = ligne.classList.toggle("ouverte");
+        e.currentTarget.textContent = ouverte ? "Réduire" : "Tout voir";
+      },
+    });
+    ligne.append(
+      el("div", { classe: "prop-rang", texte: String(prop.rang).padStart(2, "0") }),
+      el("div", {}, [
+        el("p", { classe: "prop-texte" }, texteMots(prop.texte, prop.mots)),
+        el("div", { classe: "prop-meta" }, [
+          resumeMots(prop.mots),
+          el("span", {}, ["clé ", el("code", { texte: prop.cle })]),
+          el("span", {}, ["inverse ", el("code", { texte: prop.cle_inverse })]),
+          el("span", { texte: "log S " + decimal(prop.score) }),
+          el("span", { texte: nombre(prop.visites) + " visites" }),
+          el("span", { texte: "proposée " + nombre(prop.propositions) + "×" }),
+        ]),
+      ]),
+      el("div", { classe: "prop-actions" }, [
+        el("button", { classe: "btn btn-humain", type: "button", texte: "Choisir",
+          onclick: () => choisirCle(prop, longueur, ligne) }),
+        bascule,
+      ]),
+    );
+    liste.append(ligne);
+  }
+}
+
+function choisirCle(prop, longueur, ligne) {
+  document.querySelectorAll(".prop.choisie").forEach((c) => c.classList.remove("choisie"));
+  ligne.classList.add("choisie");
+  const paire = (titre, valeur) => el("div", {}, [el("dt", { texte: titre }), el("dd", { texte: valeur })]);
+  $("final-cles").replaceChildren(...[
+    paire("mode", longueur ? "permutation, ℓ = " + longueur : "substitution"),
+    paire("clé", prop.cle),
+    paire("log S", decimal(prop.score)),
+    prop.mots ? paire("mots reconnus", prop.mots.pourcentage + " % (" + nombre(prop.mots.reconnus) + "/" + nombre(prop.mots.total) + ")") : null,
+  ].filter(Boolean));
+  $("final-texte").replaceChildren(...texteMots(prop.texte, prop.mots));
+  $("retour-copie").hidden = true;
+  $("carte-final").hidden = false;
+  $("carte-final").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+$("bouton-copier").addEventListener("click", async () => {
+  const texte = $("final-texte").textContent;
+  let ok = false;
+  try { await navigator.clipboard.writeText(texte); ok = true; }
+  catch (e) {
+    const zone = el("textarea", { style: "position:fixed;opacity:0" });
+    zone.value = texte;
+    document.body.append(zone);
+    zone.select();
+    try { ok = document.execCommand("copy"); } catch (e2) { ok = false; }
+    zone.remove();
+  }
+  $("retour-copie").textContent = ok ? "Copié" : "Copie impossible : sélectionnez le texte.";
+  $("retour-copie").hidden = false;
+});
+
+majCompteur();
+</script>
+</body>
+</html>

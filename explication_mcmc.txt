@@ -1,0 +1,12 @@
+Substitution
+
+Pour la substitution, chaque lettre est remplacée par une autre selon une clé, et les espaces ne bougent pas. Le programme part d'une clé (au hasard ou en utilisant les lettres les plus fréquentes du français), puis échange deux lettres au hasard et garde l'échange si le texte déchiffré ressemble davantage à du français, jusqu'à trouver une bonne clé.
+
+Permutation
+
+Pour la permutation, on garde les mêmes lettres et on change seulement leur ordre à l'intérieur de blocs de ℓ caractères, avec la même clé pour chaque bloc. Le programme essaie une permutation, déplace un petit groupe de positions, garde le changement si le texte se lit mieux, puis recommence pour ℓ = 2, 3, 4, etc.
+
+Les propositions de clés
+
+À la fin, le programme ne choisit pas tout seul : il garde les 5 meilleures clés qu'il a trouvées et les affiche avec une note et un extrait du texte déchiffré. L'utilisateur peut ainsi vérifier rapidement si l'une des propositions donne un texte compréhensible. C'est utile parce que la note n'est qu'une approximation : l'œil humain repère tout de suite si le résultat ressemble à du français. Si aucune proposition ne convient, on peut relancer l'attaque avec plus d'itérations ou d'autres paramètres.
+
