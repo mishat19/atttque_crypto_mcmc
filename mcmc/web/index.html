@@ -161,18 +161,12 @@ mark.inconnu{background:#FEF08A;color:inherit;border-radius:2px;box-shadow:0 0 0
 .section-tete p{margin:0;font-size:12.5px;color:var(--doux)}
 .aide-resultats{font-size:13px;color:var(--doux);margin:0 0 14px;max-width:80ch}
 
-.longueurs{width:100%;border-collapse:collapse;font-size:13px;background:var(--surface);border:1px solid var(--trait);
-  border-radius:10px;overflow:hidden;margin-bottom:16px}
-.tableau-enveloppe{overflow-x:auto}
-.longueurs th{font-weight:500;color:var(--doux);font-size:12px;text-align:left;padding:8px 14px;border-bottom:1px solid var(--trait);white-space:nowrap}
-.longueurs td{padding:8px 14px;border-bottom:1px solid var(--trait);font-family:var(--mono);white-space:nowrap;color:var(--texte)}
-.longueurs tr:last-child td{border-bottom:0}
-.longueurs .nombre{text-align:right}
-.longueurs tbody tr{cursor:pointer;transition:background .1s}
-.longueurs tbody tr:hover{background:var(--survol)}
-.longueurs tbody tr.actif{background:#EFF6FF}
-.longueurs tbody tr.actif td:first-child{box-shadow:inset 2px 0 0 var(--auto);color:var(--encre);font-weight:600}
-.etoile{color:var(--auto);font-family:var(--sans);font-size:11px;margin-left:6px}
+.onglets{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px}
+.onglet{border:1px solid var(--trait);background:var(--surface);color:var(--doux);border-radius:7px;padding:5px 12px;
+  font-family:var(--mono);font-size:13px;cursor:pointer}
+.onglet:hover{color:var(--encre);background:var(--survol)}
+.onglet[aria-selected=true]{background:var(--encre);border-color:var(--encre);color:#fff}
+.onglet:focus-visible{outline:2px solid var(--encre);outline-offset:2px}
 
 .liste{background:var(--surface);border:1px solid var(--trait);border-radius:10px}
 .prop{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:16px;padding:16px 18px;border-top:1px solid var(--trait);
@@ -217,10 +211,10 @@ mark.inconnu{background:#FEF08A;color:inherit;border-radius:2px;box-shadow:0 0 0
       <span>substitution · permutation</span>
     </div>
     <ol class="etapes" aria-label="Étapes">
-      <li class="etape humain" data-etape="1"><b>1 Texte</b><small>vous</small></li>
-      <li class="etape humain" data-etape="2"><b>2 Mode</b><small>vous</small></li>
+      <li class="etape humain" data-etape="1"><b>1 Texte</b></li>
+      <li class="etape humain" data-etape="2"><b>2 Mode</b></li>
       <li class="etape auto" data-etape="3"><b>3 Attaque</b><small>auto</small></li>
-      <li class="etape humain" data-etape="4"><b>4 Choix</b><small>vous</small></li>
+      <li class="etape humain" data-etape="4"><b>4 Choix</b></li>
     </ol>
   </div>
 </header>
@@ -783,38 +777,21 @@ function afficherResultats(res) {
     return;
   }
 
-  $("aide-resultats").textContent = "Une ligne par longueur ℓ. Retenir la plus petite ℓ dont le texte est lisible ; "
-    + "log S − log(ℓ!) pénalise les grandes longueurs.";
+  $("aide-resultats").textContent = "Un onglet par longueur ℓ. Retenir la plus petite ℓ dont le texte est lisible.";
+  // Onglet ouvert par défaut : meilleur score pénalisé log S − log(ℓ!).
   const meilleure = res.resume.reduce((a, b) => (b.penalise > a.penalise ? b : a), res.resume[0]);
-
-  const corps = el("tbody");
-  for (const ligne of res.resume) {
-    corps.append(el("tr", {
-      "data-l": ligne.longueur, tabindex: 0,
-      onclick: () => choisirLongueur(ligne.longueur),
-      onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); choisirLongueur(ligne.longueur); } },
-    }, [
-      el("td", {}, ["ℓ = " + ligne.longueur, ligne === meilleure ? el("span", { classe: "etoile", texte: "meilleur" }) : null]),
-      el("td", { classe: "nombre", texte: decimal(ligne.score) }),
-      el("td", { classe: "nombre", texte: decimal(ligne.penalise) }),
-      el("td", { classe: "nombre", texte: ligne.mots ? ligne.mots.pourcentage + " %" : "—" }),
-      el("td", { texte: ligne.cle }),
-    ]));
-  }
-  $("resume-permutation").append(el("div", { classe: "tableau-enveloppe" }, el("table", { classe: "longueurs" }, [
-    el("thead", {}, el("tr", {}, [
-      el("th", { texte: "Longueur" }), el("th", { classe: "nombre", texte: "log S" }),
-      el("th", { classe: "nombre", texte: "log S − log(ℓ!)" }), el("th", { classe: "nombre", texte: "mots reconnus" }),
-      el("th", { texte: "Meilleure clé" }),
-    ])),
-    corps,
-  ])));
+  $("resume-permutation").append(el("div", { classe: "onglets", role: "tablist" }, res.longueurs.map((entree) =>
+    el("button", {
+      classe: "onglet", type: "button", role: "tab", "data-l": entree.longueur,
+      texte: "ℓ = " + entree.longueur,
+      onclick: () => choisirLongueur(entree.longueur),
+    }))));
   choisirLongueur(meilleure.longueur);
 }
 
 function choisirLongueur(longueur) {
   etat.longueurActive = longueur;
-  document.querySelectorAll(".longueurs tbody tr").forEach((tr) => tr.classList.toggle("actif", Number(tr.dataset.l) === longueur));
+  document.querySelectorAll(".onglet").forEach((o) => o.setAttribute("aria-selected", Number(o.dataset.l) === longueur));
   const entree = etat.resultats.longueurs.find((e) => e.longueur === longueur);
   afficherPropositions(entree.propositions, longueur);
 }
