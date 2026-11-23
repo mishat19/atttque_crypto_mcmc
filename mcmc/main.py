@@ -39,6 +39,13 @@ from utils.initialisation import (
     cle_aleatoire_positions,
     cle_heuristique,
 )
+from utils.dictionnaire import (
+    analyser_mots,
+    charger_dictionnaire,
+    couleur_disponible,
+    resume_mots,
+    surligner,
+)
 from utils.mutation import muter_lettres, muter_positions
 from utils.score import (
     calculer_score_log,
@@ -176,9 +183,17 @@ def classer(etats, n, critere="score"):
 
 def afficher_propositions(propositions, chiffre, dechiffrer, inverse, formater,
                           titre=None):
-    """Affiche une petite famille de clés candidates et le texte associé."""
+    """Affiche une petite famille de clés candidates et le texte associé.
+
+    Extra de Mathis (affichage seulement) : les mots absents du dictionnaire
+    sont surlignés et le pourcentage de mots reconnus est donné.
+    """
     if titre:
         print(titre)
+    dictionnaire = charger_dictionnaire()
+    couleur = couleur_disponible()
+    if dictionnaire is None:
+        print("(mcmc/dictionnaire_fr.txt absent : pas de surlignage des mots)")
     for numero, (cle, info) in enumerate(propositions, start=1):
         propositions_recues = info.get("propositions", 0)
         print(
@@ -188,7 +203,13 @@ def afficher_propositions(propositions, chiffre, dechiffrer, inverse, formater,
         )
         print(f"  clé         : {formater(cle)}")
         print(f"  clé inverse : {formater(inverse(cle))}")
-        print(f"  texte       : {dechiffrer(chiffre, cle)[:100]}")
+        texte = dechiffrer(chiffre, cle)
+        if dictionnaire is None:
+            print(f"  texte       : {texte[:100]}")
+        else:
+            analyse = analyser_mots(texte, dictionnaire)
+            print(f"  texte       : {surligner(texte, analyse['inconnus'], 100, couleur)}")
+            print(f"  {resume_mots(analyse)}")
         print()
 
 
