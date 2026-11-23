@@ -50,7 +50,6 @@ def wiki_text(titre, lang= "fr", intro_seule = False):
     # next(iter(...)) prend la première (et généralement unique) page.
     page = next(iter(resp.json()["query"]["pages"].values()))
     
-    # convert page content to a 27 character string, replacing newlines with spaces and letters in uppercase only
     # On passe en majuscules, on remplace les sauts de ligne par des espaces,
     # puis on supprime tout symbole hors de SATES (ponctuation, chiffres...).
     content = page.get("extract", "").replace("\n", " ").upper()
@@ -190,7 +189,7 @@ def text_generator(matrix, longueur=1000):
     return text
 
 # ============= DÉMONSTRATION =============
-# Ce bloc s'exécute à chaque lancement du script (et à chaque import).
+# Ce bloc s'exécute à chaque lancement du script.
 content = wiki_text("Paris", "fr", False)
 print(content)
 print("\n==================\n")

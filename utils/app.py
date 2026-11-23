@@ -34,9 +34,13 @@ from substitution.cryptogramme import scores_attaque_frequentielle
 
 # Identifiant envoyé à l'API Wikipédia (User-Agent obligatoire).
 WIKI_UA = "MonScript/1.0 (simon@example.com)"
-# Les 42 états de la chaîne de Markov : lettres, lettres accentuées, espace.
+# 27 états par défaut : lettres A-Z et espace. Les lettres accentuées ne
+# s'ajoutent que si l'utilisateur coche l'option UTF-8 dans l'interface.
 SATES = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U",
-         "V", "W", "X", "Y", "Z", "À", "Â", "Ä", "É", "È", "Ê", "Ë", "Î", "Ï", "Ô", "Ö", "Ù", "Û", "Ü", "Ç", " "]
+         "V", "W", "X", "Y", "Z", " "]
+_ACCENTS = ["À", "Â", "Ä", "É", "È", "Ê", "Ë", "Î", "Ï", "Ô", "Ö", "Ù", "Û", "Ü", "Ç"]
+# 42 états en mode UTF-8 : A-Z, lettres accentuées, espace.
+SATES_UTF8 = SATES[:-1] + _ACCENTS + [" "]
 
 _LIGATURES = (("œ", "oe"), ("Œ", "OE"), ("æ", "ae"), ("Æ", "AE"))
 
@@ -51,7 +55,7 @@ def _deplier_ligatures(texte: str) -> str:
 PORT = 8765  # port local : http://127.0.0.1:8765/
 
 
-def wiki_text(titre, lang="fr", intro_seule=False):
+def wiki_text(titre, lang="fr", intro_seule=False, etats=None):
     # Paramètres de l'API MediaWiki : on demande le texte brut (explaintext)
     # de l'article, avec résolution des redirections.
     params = {
@@ -73,9 +77,10 @@ def wiki_text(titre, lang="fr", intro_seule=False):
     # L'API renvoie un dictionnaire de pages : on prend la première valeur.
     page = next(iter(payload["query"]["pages"].values()))
 
-    # convert page content to a 27 character string, replacing newlines with spaces and letters in uppercase only
+    # On ne garde que les états de l'alphabet actif, en passant par les majuscules.
+    etats = etats or SATES
     content = _deplier_ligatures(page.get("extract", "")).replace("\n", " ").upper()
-    content = ''.join(c for c in content if c in SATES)
+    content = ''.join(c for c in content if c in etats)
 
     # Longueur paire obligatoire pour le découpage en digrammes par paires.
     if len(content) % 2 == 1:
@@ -84,11 +89,12 @@ def wiki_text(titre, lang="fr", intro_seule=False):
     return content
 
 
-def statistics(content):
-    """Histogramme des caractères : total et effectif par symbole de SATES."""
+def statistics(content, etats=None):
+    """Histogramme des caractères : total et effectif par symbole de l'alphabet actif."""
+    etats = etats or SATES
     stats = {
         "global_count": len(content),
-        "character_count": {char: content.count(char) for char in SATES},
+        "character_count": {char: content.count(char) for char in etats},
     }
     return stats
 
@@ -106,47 +112,49 @@ def digram_stats(content, largeur=2):
     return diagram_stats
 
 
-def markov_matrix(digram_stats):
-    """Matrice P(suivant | courant) de taille 42×42, normalisée par ligne.
+def markov_matrix(digram_stats, etats=None):
+    """Matrice P(suivant | courant) de taille len(etats)×len(etats), normalisée par ligne.
 
-    matrix[x][y] = nombre de fois où SATES[y] suit SATES[x], divisé par le
-    nombre total de transitions depuis SATES[x]. C'est une chaîne de Markov
+    matrix[x][y] = nombre de fois où etats[y] suit etats[x], divisé par le
+    nombre total de transitions depuis etats[x]. C'est une chaîne de Markov
     d'ordre 1 : seul le symbole précédent influence le suivant.
     """
+    etats = etats or SATES
     matrix = []
 
     # Matrice de comptage initialisée à zéro.
-    for x in range(len(SATES)):
+    for x in range(len(etats)):
         matrix.append([])
-        for y in range(len(SATES)):
+        for y in range(len(etats)):
             matrix[x].append(0)
 
     # Chaque digramme "AB" incrémente la case (A, B).
     for segment in digram_stats:
-        x = SATES.index(segment[0])
-        y = SATES.index(segment[1])
+        x = etats.index(segment[0])
+        y = etats.index(segment[1])
         matrix[x][y] += digram_stats[segment]
 
     # Normalisation : chaque ligne devient une loi de probabilité (somme 1).
-    for x in range(len(SATES)):
+    for x in range(len(etats)):
         ligne_total = sum(matrix[x])
-        for y in range(len(SATES)):
+        for y in range(len(etats)):
             matrix[x][y] = matrix[x][y] / ligne_total if ligne_total > 0 else matrix[x][y] / 1
 
     return matrix
 
 
-def text_generator(matrix, longueur=1000):
+def text_generator(matrix, longueur=1000, etats=None):
     """Tire un texte aléatoire en suivant les probabilités de la matrice.
 
     À chaque étape, on regarde la ligne correspondant au symbole courant et
     on tire le suivant au hasard avec ``random.choices(weights=...)``.
     """
+    etats = etats or SATES
     text = " "
     current_char = " "
     for _ in range(longueur):
-        x = SATES.index(current_char)
-        next_char = random.choices(SATES, weights=matrix[x])[0]
+        x = etats.index(current_char)
+        next_char = random.choices(etats, weights=matrix[x])[0]
         text += next_char
         current_char = next_char
 
@@ -160,7 +168,7 @@ def text_generator(matrix, longueur=1000):
 # État global partagé par toutes les requêtes : matrice apprise, texte source
 # et dernier cryptogramme produit pour chaque chiffrement.
 # Attention : un seul "document" actif à la fois pour tous les onglets.
-ETAT: dict = {"matrix": None, "content": None, "crypto": {}}
+ETAT: dict = {"matrix": None, "content": None, "crypto": {}, "etats": SATES}
 
 # Le dictionnaire français du dossier MCMC est réutilisé ici pour surligner
 # les mots inconnus dans les textes déchiffrés.
@@ -185,61 +193,66 @@ if DICT_PATH.exists():
             MOTS_FR.add(mot)
 
 
-def nettoyer_texte(raw: str) -> str:
+def nettoyer_texte(raw: str, etats=None) -> str:
     """Applique le même filtre que wiki_text à un fichier .txt importé."""
+    etats = etats or SATES
     content = _deplier_ligatures(raw).replace("\n", " ").upper()
-    content = "".join(c for c in content if c in SATES)
+    content = "".join(c for c in content if c in etats)
     if len(content) % 2 == 1:
         content += " "
     return content
 
 
-def analyser_texte(texte: str, titre: str = "Fichier") -> dict:
+def analyser_texte(texte: str, titre: str = "Fichier", etats=None) -> dict:
     """Analyse un fichier importé : mêmes calculs que ``analyser`` (Wikipedia)."""
-    content = nettoyer_texte(texte)
+    etats = etats or SATES
+    content = nettoyer_texte(texte, etats)
     if not content:
         return {"erreur": "Aucun texte exploitable dans le fichier."}
 
     digrammes = digram_stats(content)
-    matrix = markov_matrix(digrammes)
+    matrix = markov_matrix(digrammes, etats)
     # On remplace l'état précédent : les cryptogrammes des analyses précédentes
     # ne sont plus valables.
     ETAT["matrix"] = matrix
     ETAT["content"] = content
     ETAT["crypto"] = {}
+    ETAT["etats"] = etats
 
     return {
         "titre": titre,
         "content": content,
-        "stats": statistics(content),
+        "stats": statistics(content, etats),
         "digrammes": digrammes,
         "matrix": matrix,
-        "etats": SATES,
+        "etats": etats,
         "genere": generer(2000).get("texte", ""),
     }
 
 
-def analyser(titre: str, lang: str, intro_seule: bool) -> dict:
+def analyser(titre: str, lang: str, intro_seule: bool, etats=None) -> dict:
     """Telecharge l'article et renvoie ce dont la page a besoin."""
-    content = wiki_text(titre, lang, intro_seule)
+    etats = etats or SATES
+    content = wiki_text(titre, lang, intro_seule, etats)
     if not content:
         return {"erreur": "Aucun texte exploitable dans cet article."}
 
     digrammes = digram_stats(content)
-    matrix = markov_matrix(digrammes)
+    matrix = markov_matrix(digrammes, etats)
     # On remplace l'état précédent : les cryptogrammes des analyses précédentes
     # ne sont plus valables.
     ETAT["matrix"] = matrix
     ETAT["content"] = content
     ETAT["crypto"] = {}
+    ETAT["etats"] = etats
 
     return {
         "titre": titre,
         "content": content,
-        "stats": statistics(content),
+        "stats": statistics(content, etats),
         "digrammes": digrammes,
         "matrix": matrix,
-        "etats": SATES,
+        "etats": etats,
         "genere": generer(2000).get("texte", ""),
     }
 
@@ -250,7 +263,7 @@ def generer(longueur: int) -> dict:
     if matrix is None:
         return {"erreur": "Analysez d'abord un article."}
     try:
-        return {"texte": text_generator(matrix, longueur)}
+        return {"texte": text_generator(matrix, longueur, ETAT["etats"])}
     except ValueError:
         return {"erreur": "La chaine a atteint un etat sans transition sortante."}
 
@@ -438,7 +451,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             titre = query.get("titre", [""])[0].strip()
             lang = query.get("lang", ["fr"])[0]
             intro = query.get("intro", ["0"])[0] == "1"
-            self._json(self._sur(analyser, titre, lang, intro))
+            utf8 = query.get("utf8", ["0"])[0] == "1"
+            etats = SATES_UTF8 if utf8 else SATES
+            self._json(self._sur(analyser, titre, lang, intro, etats))
             return
 
         if parsed.path == "/api/generer":
@@ -506,7 +521,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 data = {"texte": body}
             titre = (data.get("titre") or "Fichier").strip()
             texte = data.get("texte", "")
-            self._json(self._sur(analyser_texte, texte, titre))
+            etats = SATES_UTF8 if data.get("utf8") else SATES
+            self._json(self._sur(analyser_texte, texte, titre, etats))
             return
         self._repondre(404, "text/plain; charset=utf-8", b"Page inconnue")
 
@@ -684,6 +700,7 @@ h2{font-size:16px;font-weight:600;margin:0 0 3px}
     </select>
   </div>
   <label class="case"><input type="checkbox" id="intro"> Introduction seule</label>
+  <label class="case" title="Ajoute les lettres accentuées à la matrice (42 états au lieu de 27)"><input type="checkbox" id="utf8"> UTF-8 (accents)</label>
   <button id="lancer">Analyser</button>
   <div class="champ">
     <label for="fichier">Fichier .txt</label>
@@ -916,7 +933,8 @@ async function analyser(){
   statut("Telechargement de " + titre + "\\u2026");
 
   const url = "/api/analyse?titre=" + encodeURIComponent(titre)
-    + "&lang=" + $("lang").value + "&intro=" + ($("intro").checked ? "1" : "0");
+    + "&lang=" + $("lang").value + "&intro=" + ($("intro").checked ? "1" : "0")
+    + "&utf8=" + ($("utf8").checked ? "1" : "0");
   const reponse = await charger(url, $("lancer"));
 
   if (reponse.erreur) { statut(reponse.erreur, true); return; }
@@ -942,7 +960,7 @@ async function analyser(){
   rafraichirBoutons();
 }
 
-// Construit les 42x42 cases HTML. Chaque case memorise sa position (x,y)
+// Construit les cases HTML de la matrice. Chaque case memorise sa position (x,y)
 // pour afficher sa probabilite au survol via lire().
 function dessinerMatrice(){
   const { matrix, etats } = DONNEES;
@@ -1075,7 +1093,9 @@ function barres(cible, entrees, total, formateur, cle, limite = 5){
 function dessinerFrequences(){
   const { stats } = DONNEES;
   const entrees = Object.entries(stats.character_count).sort((a, b) => b[1] - a[1]);
-  $("leg-freq").textContent = nombre(stats.global_count) + " caracteres retenus, accents supprimes.";
+  const utf8 = DONNEES.etats.some(c => !/^[A-Z ]$/.test(c));
+  $("leg-freq").textContent = nombre(stats.global_count) + " caracteres retenus, "
+    + (utf8 ? "accents conserves (UTF-8)." : "accents supprimes.");
   barres($("freq"), entrees, stats.global_count || 1, nom, "freq");
 }
 
@@ -1240,7 +1260,7 @@ async function analyserFichier(){
   const reponse = await fetch("/api/analyse-texte", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ titre: fichier.name, texte })
+    body: JSON.stringify({ titre: fichier.name, texte, utf8: $("utf8").checked })
   }).then(r => r.json());
   $("lancer-fichier").disabled = false;
   if (reponse.erreur) { statut(reponse.erreur, true); return; }
