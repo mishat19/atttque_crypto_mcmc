@@ -193,7 +193,7 @@ python3 mcmc/tests/test_web.py         # tests for the demo
 
 `resultats` mirrors the CLI output. In substitution mode: the top N with rank, log S, visits, times proposed, key, inverse key and full decrypted text. In permutation mode: the top N **per ℓ** plus a summary table with `log S − log(ℓ!)`.
 
-UI: blue `#2563EB` marks automatic steps and orange `#EA580C` marks human actions. A step banner shows `1 Texte → 2 Mode → 3 Attaque → 4 Choix de la clé`. The page also has a progress bar (with `ℓ = k / max`), a Cancel button, the live panel (changed characters highlighted), a hand-drawn SVG curve of log S (one line per run), proposal cards ("Tout voir", "Choisir cette clé"), ℓ tabs plus the summary table (★ = best penalised score), the final text with "Copier", and errors shown inside the page.
+UI: blue `#2563EB` marks automatic steps and orange `#EA580C` marks human actions. A step banner shows `1 Texte → 2 Mode → 3 Attaque → 4 Choix de la clé`. The page also has a progress bar (with `ℓ = k / max`), a Cancel button, the live panel (changed characters highlighted), the proposals ("Tout voir", "Choisir"), plain `ℓ = 2 … ℓ max` tabs in permutation mode (the tab with the best `log S − log(ℓ!)` opens first; the API still returns `resume`, but the page no longer shows a summary table), the final text with "Copier", and errors shown inside the page.
 
 **"Fréquence des caractères" panel (helps choose the mode):** computed live in the browser from the pasted ciphertext.
 - Chart: 26 letters, ciphertext vs French reference.
@@ -207,8 +207,7 @@ Display only. It does **not** touch the attack (score, mutation, acceptance, sel
 - **Terminal** (`afficher_propositions` in `main.py`): unknown words are shown in yellow (ANSI) when stdout is a terminal, `[MOT]` otherwise (pipe, `NO_COLOR`). The % line is printed under each proposition and is computed on the full text.
 - **Web page:**
   - unknown words highlighted in yellow in the proposals and the final text;
-  - "mots reconnus" shown under each proposal;
-  - a "mots reconnus" column in the permutation ℓ table.
+  - "mots reconnus" shown under each proposal.
 - On the example: right key ≈ 98–99 % (only `WEB`, `VERIFIABILITE`, `QU`, `SOUP` unknown); wrong keys ≈ 15–23 %.
 - Tests: `python3 mcmc/tests/test_dictionnaire.py`.
 
